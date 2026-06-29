@@ -120,9 +120,12 @@ export function getRedisClient(): Redis | null {
 
 export async function getCache<T>(key: string): Promise<T | null> {
   // Always query memory cache first to see if we have a fast local hit, or fallback immediately if Redis is down
-  const memoryHit = getMemoryCache<T>(key);
-  if (memoryHit !== null) {
-    return memoryHit;
+  // Bypass memory cache for dashboard views to prevent multi-process sync issues
+  if (!key.startsWith("dashboard:")) {
+    const memoryHit = getMemoryCache<T>(key);
+    if (memoryHit !== null) {
+      return memoryHit;
+    }
   }
 
   if (!isRedisHealthy) {
