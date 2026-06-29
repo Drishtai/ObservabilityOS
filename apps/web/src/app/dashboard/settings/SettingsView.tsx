@@ -10,6 +10,7 @@ import {
   Terminal,
   Volume2,
   RefreshCw,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,47 @@ interface AuditLog {
 export default function SettingsView({ project }: SettingsViewProps) {
   const router = useRouter();
   const [name, setName] = useState(project.name);
+
+  // Key Rotation States
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regeneratedKey, setRegeneratedKey] = useState<string | null>(null);
+  const [copiedRegenerated, setCopiedRegenerated] = useState(false);
+
+  const handleRegenerateKey = async () => {
+    const confirmRegen = window.confirm(
+      "Are you sure you want to regenerate your API Ingestion Key? Any services using the old key will stop working immediately."
+    );
+    if (!confirmRegen) return;
+
+    setIsRegenerating(true);
+    setRegeneratedKey(null);
+    try {
+      const res = await fetch("/api/projects/regenerate-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRegeneratedKey(data.plainApiKey);
+      } else {
+        const data = await res.json();
+        alert(data.error?.message || "Failed to regenerate API key");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An unexpected error occurred");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleCopyRegenerated = () => {
+    if (!regeneratedKey) return;
+    navigator.clipboard.writeText(regeneratedKey);
+    setCopiedRegenerated(true);
+    setTimeout(() => setCopiedRegenerated(false), 2000);
+  };
 
   // Audit Logs States
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -194,6 +236,66 @@ export default function SettingsView({ project }: SettingsViewProps) {
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
+
+            {regeneratedKey ? (
+              <div className="space-y-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 mt-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                    New Ingestion Key Generated!
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRegeneratedKey(null)}
+                    className="text-slate-400 hover:text-white h-6 text-[10px]"
+                  >
+                    Done
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 select-all truncate">
+                    {regeneratedKey}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={handleCopyRegenerated}
+                    className="shrink-0"
+                  >
+                    {copiedRegenerated ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-amber-500 mt-2 font-semibold">
+                  ⚠️ Copy this key now! For security, it is cryptographically hashed in our database and you will not see it again.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 pt-2">
+                <Label>API Ingestion Key</Label>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-xs font-mono text-slate-600 select-none truncate">
+                    obs_sk_••••••••••••••••••••••••••••••••
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateKey}
+                    disabled={isRegenerating}
+                    className="shrink-0 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-semibold"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRegenerating ? "animate-spin" : ""}`} />
+                    Regenerate Key
+                  </Button>
+                </div>
+              </div>
+            )}
 
 
           </CardContent>
