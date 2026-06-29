@@ -107,8 +107,6 @@ export default function ProjectDashboardView({
     () => true,
     () => false,
   );
-  const [showKey, setShowKey] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [serviceName, setServiceName] = useState("");
@@ -122,12 +120,6 @@ export default function ProjectDashboardView({
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}/api/ingest`
       : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/ingest`;
-
-  const handleCopyKey = () => {
-    navigator.clipboard.writeText(project.apiKey);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(endpointUrl);
@@ -213,44 +205,7 @@ export default function ProjectDashboardView({
                 </div>
               </div>
 
-              {/* API Key */}
-              <div className="space-y-2">
-                <Label>API Ingestion Key</Label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 select-all truncate flex items-center justify-between">
-                    <span>
-                      {showKey
-                        ? project.apiKey
-                        : "••••••••••••••••••••••••••••••••••••••••••••••••"}
-                    </span>
-                    <button
-                      onClick={() => setShowKey(!showKey)}
-                      className="text-slate-500 hover:text-slate-300 ml-2 cursor-pointer"
-                    >
-                      {showKey ? (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={handleCopyKey}
-                    className="shrink-0"
-                  >
-                    {copiedKey ? (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
-                  ℹ️ For security, your key is cryptographically hashed in our database. The original plain key is not shown again, but this hashed key is fully valid and can be copied and used for ingestion.
-                </p>
-              </div>
+
             </CardContent>
           </Card>
         </div>

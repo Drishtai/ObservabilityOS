@@ -195,18 +195,7 @@ export default function SettingsView({ project }: SettingsViewProps) {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>API Ingestion Key</Label>
-              <div className="flex-1 bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-xs font-mono text-slate-500 select-none truncate">
-                obs_sk_••••••••••••••••••••••••••••••••
-              </div>
-              <p className="text-[10px] text-amber-500 mt-1.5 leading-relaxed">
-                ⚠️ For security, your API ingestion key is cryptographically
-                hashed inside our database and cannot be revealed or copied
-                again. If you have lost your key, please create a new project to
-                generate a new credentials set.
-              </p>
-            </div>
+
           </CardContent>
         </Card>
 
