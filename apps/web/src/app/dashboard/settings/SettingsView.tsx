@@ -102,6 +102,40 @@ export default function SettingsView({ project }: SettingsViewProps) {
     setTimeout(() => setCopiedRegenerated(false), 2000);
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteProject = async () => {
+    const confirmName = window.prompt(
+      `To confirm deletion, please type the project name "${project.name}":`
+    );
+    if (confirmName !== project.name) {
+      if (confirmName !== null) {
+        alert("Project name did not match. Deletion cancelled.");
+      }
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      if (res.ok) {
+        window.location.href = "/dashboard";
+      } else {
+        const data = await res.json();
+        alert(data.error?.message || "Failed to delete project");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An unexpected error occurred");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Audit Logs States
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(true);
@@ -460,6 +494,36 @@ export default function SettingsView({ project }: SettingsViewProps) {
           </Button>
         </div>
       </form>
+
+      {/* Danger Zone */}
+      <Card className="border border-rose-500/20 bg-rose-500/5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-br from-rose-500/5 to-transparent pointer-events-none" />
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-4">
+          <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
+          <CardTitle className="text-sm font-bold uppercase tracking-wider text-rose-500">
+            Danger Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-2xl">
+            <div>
+              <Label className="text-white font-bold text-xs">Delete this project</Label>
+              <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                Once you delete a project, there is no going back. All services, logs, metrics, deployments, and incidents will be permanently deleted.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isDeleting}
+              onClick={handleDeleteProject}
+              className="shrink-0 border-rose-500/30 text-rose-500 hover:bg-rose-500 hover:text-white font-bold text-xs"
+            >
+              {isDeleting ? "Deleting Project..." : "Delete Project"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* System & Project Audit Logs Section */}
       <Card className="relative overflow-hidden">
