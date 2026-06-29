@@ -264,20 +264,20 @@ export default async function LandingPage() {
               </Link>
             ) : (
               <>
-                <a
+                <Link
                   id="header_login_btn"
-                  href="/api/auth/github"
+                  href="/login"
                   className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-200 px-4 h-9 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer"
                 >
-                  <Github className="w-4 h-4" />
+                  <Shield className="w-4 h-4" />
                   Sign In
-                </a>
-                <a
-                  href="/api/auth/github"
+                </Link>
+                <Link
+                  href="/login"
                   className="hidden sm:inline-flex items-center gap-1.5 bg-white hover:bg-slate-100 text-slate-950 px-4 h-9 rounded-lg text-sm font-semibold transition-all duration-200 cursor-pointer"
                 >
                   Get Started Free
-                </a>
+                </Link>
               </>
             )}
           </div>
@@ -330,14 +330,14 @@ export default async function LandingPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
             ) : (
-              <a
-                id="hero_github_oauth_btn"
-                href="/api/auth/github"
+              <Link
+                id="hero_login_btn"
+                href="/login"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-white hover:bg-slate-100 text-slate-950 font-bold h-12 px-8 rounded-xl transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-white/5 cursor-pointer"
               >
-                <Github className="w-5 h-5" />
-                Sign Up with GitHub
-              </a>
+                <Shield className="w-5 h-5" />
+                Sign In to Dashboard
+              </Link>
             )}
             <a
               href={`${
@@ -1180,8 +1180,8 @@ export default async function LandingPage() {
                       Deploy Now
                     </a>
                   ) : (
-                    <a
-                      href="/api/auth/github"
+                    <Link
+                      href="/login"
                       className={`mt-6 w-full inline-flex items-center justify-center h-10 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                         plan.id === "pro"
                           ? "bg-white hover:bg-slate-100 text-slate-950 font-bold hover:-translate-y-0.5 shadow-md shadow-white/5"
@@ -1189,7 +1189,7 @@ export default async function LandingPage() {
                       }`}
                     >
                       {plan.id === "free" ? "Start Free" : "Upgrade Now"}
-                    </a>
+                    </Link>
                   )}
                 </div>
               );
@@ -1256,14 +1256,14 @@ export default async function LandingPage() {
                   <ArrowRight className="w-4 h-4" />
                 </Link>
               ) : (
-                <a
-                  id="final_github_oauth_btn"
-                  href="/api/auth/github"
+                <Link
+                  id="final_login_btn"
+                  href="/login"
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-950 font-bold h-12 px-8 rounded-xl transition-all duration-200 shadow-lg shadow-white/5 cursor-pointer"
                 >
-                  <Github className="w-5 h-5" />
-                  Get Started Free
-                </a>
+                  <Shield className="w-5 h-5" />
+                  Sign In to Dashboard
+                </Link>
               )}
               <a
                 href={`${process.env.NEXT_PUBLIC_DOCS_URL || "http://localhost:3001"}/docs/quickstart`}
