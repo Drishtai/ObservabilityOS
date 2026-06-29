@@ -18,6 +18,7 @@ RUN corepack enable && corepack prepare yarn@4.16.0 --activate
 COPY --from=pruner /app/out/json/ ./
 COPY --from=pruner /app/out/yarn.lock ./yarn.lock
 COPY .yarnrc.yml ./
+COPY .yarn/ ./.yarn/
 
 # Install packages with immutable rules
 RUN yarn install --immutable
