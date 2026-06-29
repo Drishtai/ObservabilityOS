@@ -156,6 +156,7 @@ export default function ServiceDetailView({
       if (res.ok) {
         setIsSettingsModalOpen(false);
         router.push(`/dashboard?projectId=${projectId}`);
+        router.refresh();
       } else {
         const data = await res.json();
         alert(data.error?.message || "Failed to delete service");
