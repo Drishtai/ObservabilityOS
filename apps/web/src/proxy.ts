@@ -9,7 +9,15 @@ export function proxy(request: NextRequest) {
   if (path.startsWith("/dashboard")) {
     if (!hasSession) {
       // Redirect to landing/login page
-      const loginUrl = new URL("/", request.url);
+      const loginUrl = new URL("/login", request.url);
+      const forwardedHost = request.headers.get("x-forwarded-host");
+      const forwardedProto = request.headers.get("x-forwarded-proto");
+      if (forwardedHost) {
+        loginUrl.host = forwardedHost;
+      }
+      if (forwardedProto) {
+        loginUrl.protocol = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
+      }
       return NextResponse.redirect(loginUrl);
     }
   }
