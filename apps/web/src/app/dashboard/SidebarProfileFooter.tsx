@@ -49,6 +49,20 @@ export default function SidebarProfileFooter({
           Sign Out
         </button>
       </form>
+
+      <div className="mt-4 text-center border-t border-slate-900/40 pt-3">
+        <p className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase">
+          Self-Hosted Edition
+        </p>
+        <a
+          href="https://github.com/Vaibhav-Singh2/ObservabilityOS"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] text-indigo-400/70 hover:text-indigo-400 transition-colors inline-flex items-center gap-0.5 mt-0.5"
+        >
+          Documentation & Support
+        </a>
+      </div>
     </div>
   );
 }
