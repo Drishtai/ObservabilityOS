@@ -34,7 +34,9 @@ export async function POST(request: Request) {
 
     // 3. Find Project (Tenant Isolation)
     const hashedApiKey = hashApiKey(apiKey);
-    const project = await Project.findOne({ apiKey: hashedApiKey });
+    const project = await Project.findOne({
+      $or: [{ apiKey: apiKey }, { apiKey: hashedApiKey }],
+    });
     if (!project) {
       return NextResponse.json(
         {
