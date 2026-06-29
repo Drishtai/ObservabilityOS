@@ -98,8 +98,8 @@ jobs:
               -e MONGODB_URI=${{ secrets.OBSERVABILITY_MONGODB_URI }} \
               -e REDIS_URL=${{ secrets.OBSERVABILITY_REDIS_URL }} \
               -e JWT_SECRET=${{ secrets.OBSERVABILITY_JWT_SECRET }} \
-              -e ADMIN_USERNAME=${{ secrets.OBSERVABILITY_ADMIN_USERNAME }} \
-              -e ADMIN_PASSWORD=${{ secrets.OBSERVABILITY_ADMIN_PASSWORD }} \
+              -e ADMIN_USERNAME=${{ secrets.ADMIN_USERNAME }} \
+              -e ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }} \
               -e NEXT_PUBLIC_APP_URL=${{ secrets.OBSERVABILITY_APP_URL }} \
               -e CRON_SECRET=${{ secrets.OBSERVABILITY_CRON_SECRET }} \
               ghcr.io/$REPO_NAME:latest
