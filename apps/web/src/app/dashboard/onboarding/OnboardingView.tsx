@@ -406,10 +406,13 @@ logger.info("ObservabilityOS integration successful!", {
                       )}
                     </Button>
                   </div>
-                  {!plainApiKey && (
-                    <p className="text-[10px] text-amber-500 leading-relaxed mt-1">
-                      ⚠️ API key is secured and cannot be retrieved. If you did
-                      not save it, please create a new project.
+                  {plainApiKey ? (
+                    <p className="text-[11px] text-amber-400 font-semibold leading-relaxed mt-1.5 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">
+                      ⚠️ Make sure to copy this key now. For security, it is cryptographically hashed in our database and you will not see it again.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 leading-relaxed mt-1">
+                      ℹ️ For security, your key is only shown once at project creation. If you lost it, please create a new project.
                     </p>
                   )}
                 </div>

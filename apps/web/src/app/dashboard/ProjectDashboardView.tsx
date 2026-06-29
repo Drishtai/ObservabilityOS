@@ -247,6 +247,9 @@ export default function ProjectDashboardView({
                     )}
                   </Button>
                 </div>
+                <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                  ℹ️ For security, your key is cryptographically hashed in our database. The original plain key is not shown again, but this hashed key is fully valid and can be copied and used for ingestion.
+                </p>
               </div>
             </CardContent>
           </Card>
