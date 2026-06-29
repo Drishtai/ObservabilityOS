@@ -30,6 +30,14 @@ export const getAuthSession = cache(async () => {
     redirect("/api/auth/logout");
   }
 
+  const isSelfHosted = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
+  if (isSelfHosted) {
+    await Project.updateMany(
+      { ownerId: user._id, plan: { $ne: "self-host" } },
+      { $set: { plan: "self-host" } }
+    );
+  }
+
   const projects = await Project.find({ ownerId: user._id }).sort({
     createdAt: -1,
   });

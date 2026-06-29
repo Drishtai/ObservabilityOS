@@ -54,10 +54,13 @@ export async function POST(request: Request) {
     const plainApiKey = generateApiKey();
     const hashedApiKey = hashApiKey(plainApiKey);
 
+    const isSelfHosted = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
+
     const project = await Project.create({
       ownerId: user._id,
       name: name.trim(),
       apiKey: hashedApiKey,
+      plan: isSelfHosted ? "self-host" : "free",
     });
 
     return NextResponse.json({ project, plainApiKey }, { status: 201 });
