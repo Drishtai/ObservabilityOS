@@ -2,7 +2,6 @@
 node_modules
 .next
 .turbo
-.yarn
 dist
 out
 build
