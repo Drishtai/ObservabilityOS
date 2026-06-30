@@ -6,14 +6,13 @@ function getRedirectUrl(request: Request): string {
   const forwardedProto = request.headers.get("x-forwarded-proto");
   if (forwardedHost) {
     url.host = forwardedHost;
-    // Strip port if it's default SSL/HTTP
-    if (forwardedProto === "https" && url.port === "443") {
-      url.port = "";
-    }
   }
   if (forwardedProto) {
     // Ensure protocol matches forwarded protocol (e.g. https)
     url.protocol = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
+  }
+  if (forwardedHost || forwardedProto) {
+    url.port = "";
   }
   return url.toString();
 }

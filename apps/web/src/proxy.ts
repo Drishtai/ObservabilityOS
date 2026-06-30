@@ -18,6 +18,9 @@ export function proxy(request: NextRequest) {
       if (forwardedProto) {
         loginUrl.protocol = forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
       }
+      if (forwardedHost || forwardedProto) {
+        loginUrl.port = "";
+      }
       return NextResponse.redirect(loginUrl);
     }
   }
