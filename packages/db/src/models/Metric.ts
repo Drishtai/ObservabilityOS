@@ -35,6 +35,7 @@ const MetricSchema = new Schema<IMetric>(
       metaField: "projectId",
       granularity: "seconds",
     },
+    expireAfterSeconds: 259200, // 3 days (reduces space in free Atlas)
   },
 );
 

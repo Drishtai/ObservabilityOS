@@ -40,6 +40,7 @@ const LogSchema = new Schema<ILog>(
       metaField: "projectId",
       granularity: "seconds",
     },
+    expireAfterSeconds: 259200, // 3 days (reduces space in free Atlas)
   },
 );
 
