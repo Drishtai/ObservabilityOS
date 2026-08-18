@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useMemo } from "react";
 import NextLink from "next/link";
 import {
