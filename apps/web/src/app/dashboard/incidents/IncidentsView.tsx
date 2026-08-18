@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useMemo } from "react";
 import NextLink from "next/link";
 import {
@@ -12,6 +10,10 @@ import {
   Sparkles,
   Activity,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,6 +108,8 @@ export default function IncidentsView({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Sync / refresh logic
   const handleRefresh = async () => {
@@ -178,6 +182,77 @@ export default function IncidentsView({
     return incidents.filter((inc) => inc.status !== "resolved").length;
   }, [incidents]);
 
+  const totalIncidents = filteredIncidents.length;
+  const totalPages = Math.max(1, Math.ceil(totalIncidents / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleServiceChange = (val: string) => {
+    setServiceFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleStatusChange = (val: string) => {
+    setStatusFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (val: string) => {
+    setPageSize(Number(val));
+    setCurrentPage(1);
+  };
+
+  const paginatedIncidents = useMemo(() => {
+    const startIdx = (safeCurrentPage - 1) * pageSize;
+    return filteredIncidents.slice(startIdx, startIdx + pageSize);
+  }, [filteredIncidents, safeCurrentPage, pageSize]);
+
+  const startItem = totalIncidents === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+  const endItem = Math.min(safeCurrentPage * pageSize, totalIncidents);
+
+  // Generate pagination items with smart ellipsis
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    if (safeCurrentPage <= 4) {
+      pages.push(1, 2, 3, 4, 5, "...", totalPages);
+    } else if (safeCurrentPage >= totalPages - 3) {
+      pages.push(
+        1,
+        "...",
+        totalPages - 4,
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      );
+    } else {
+      pages.push(
+        1,
+        "...",
+        safeCurrentPage - 1,
+        safeCurrentPage,
+        safeCurrentPage + 1,
+        "...",
+        totalPages,
+      );
+    }
+    return pages;
+  }, [totalPages, safeCurrentPage]);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages && page !== safeCurrentPage) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Title Header */}
@@ -236,7 +311,7 @@ export default function IncidentsView({
             type="text"
             placeholder="Search incidents by symptom or title..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             className="pl-10"
           />
         </div>
@@ -248,7 +323,7 @@ export default function IncidentsView({
             <Filter className="w-3.5 h-3.5 text-slate-500" />
             <Select
               value={serviceFilter}
-              onValueChange={(val) => setServiceFilter(val)}
+              onValueChange={handleServiceChange}
             >
               <SelectTrigger className="w-40 text-xs">
                 <SelectValue placeholder="All Services" />
@@ -269,7 +344,7 @@ export default function IncidentsView({
           {/* Status filter */}
           <Select
             value={statusFilter}
-            onValueChange={(val) => setStatusFilter(val)}
+            onValueChange={handleStatusChange}
           >
             <SelectTrigger className="w-36 text-xs">
               <SelectValue placeholder="All Statuses" />
@@ -283,6 +358,36 @@ export default function IncidentsView({
           </Select>
         </div>
       </div>
+
+      {/* Results Count & Items per Page Header Bar */}
+      {totalIncidents > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1 text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <span>
+              Showing <strong className="text-white">{startItem}–{endItem}</strong> of{" "}
+              <strong className="text-white">{totalIncidents}</strong> incidents
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <span className="text-slate-500">Per page:</span>
+            <Select
+              value={pageSize.toString()}
+              onValueChange={handlePageSizeChange}
+            >
+              <SelectTrigger className="w-20 h-7 text-xs bg-slate-900 border-slate-800">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       {/* Incidents List */}
       {filteredIncidents.length === 0 ? (
@@ -302,96 +407,192 @@ export default function IncidentsView({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredIncidents.map((inc) => {
-            const dateVal = new Date(inc.createdAt).toLocaleString();
-            const badgeVariant =
-              inc.status === "open"
-                ? ("destructive" as const)
-                : inc.status === "investigating"
-                  ? ("warning" as const)
-                  : ("success" as const);
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            {paginatedIncidents.map((inc) => {
+              const dateVal = new Date(inc.createdAt).toLocaleString();
+              const badgeVariant =
+                inc.status === "open"
+                  ? ("destructive" as const)
+                  : inc.status === "investigating"
+                    ? ("warning" as const)
+                    : ("success" as const);
 
-            return (
-              <Card
-                key={inc.id}
-                className="group relative rounded-xl border border-slate-905 bg-slate-950 hover:border-slate-800/80 transition-all duration-200"
-              >
-                {/* Visual Accent for Open Incidents */}
-                {inc.status !== "resolved" && (
-                  <div
-                    className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl ${
-                      inc.status === "open" ? "bg-rose-500" : "bg-amber-500"
-                    }`}
-                  />
-                )}
+              return (
+                <Card
+                  key={inc.id}
+                  className="group relative rounded-xl border border-slate-905 bg-slate-950 hover:border-slate-800/80 transition-all duration-200"
+                >
+                  {/* Visual Accent for Open Incidents */}
+                  {inc.status !== "resolved" && (
+                    <div
+                      className={`absolute left-0 top-0 bottom-0 w-0.75 rounded-l-xl ${
+                        inc.status === "open" ? "bg-rose-500" : "bg-amber-500"
+                      }`}
+                    />
+                  )}
 
-                <CardContent className="p-5 md:p-6 flex flex-col md:flex-row md:items-start justify-between gap-6">
-                  <div className="space-y-3 flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      {/* Status Pill */}
-                      <Badge variant={badgeVariant} className="capitalize">
-                        {inc.status}
-                      </Badge>
+                  <CardContent className="p-5 md:p-6 flex flex-col md:flex-row md:items-start justify-between gap-6">
+                    <div className="space-y-3 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Status Pill */}
+                        <Badge variant={badgeVariant} className="capitalize">
+                          {inc.status}
+                        </Badge>
 
-                      {/* Service & Env Pill */}
-                      <Badge variant="outline">
-                        {inc.service
-                          ? `${inc.service.name} • ${inc.service.environment.toUpperCase()}`
-                          : "unknown service"}
-                      </Badge>
+                        {/* Service & Env Pill */}
+                        <Badge variant="outline">
+                          {inc.service
+                            ? `${inc.service.name} • ${inc.service.environment.toUpperCase()}`
+                            : "unknown service"}
+                        </Badge>
 
-                      {/* AI Tag */}
-                      <Badge
-                        variant="secondary"
-                        className="text-indigo-400 border border-indigo-500/15 flex items-center gap-1"
-                      >
-                        <Sparkles className="w-2.5 h-2.5" />
-                        AI Summary ({Math.round(inc.confidence * 100)}%)
-                      </Badge>
-                    </div>
+                        {/* AI Tag */}
+                        <Badge
+                          variant="secondary"
+                          className="text-indigo-400 border border-indigo-500/15 flex items-center gap-1"
+                        >
+                          <Sparkles className="w-2.5 h-2.5" />
+                          AI Summary ({Math.round(inc.confidence * 100)}%)
+                        </Badge>
+                      </div>
 
-                    {/* Incident Title */}
-                    <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors truncate">
-                      {inc.title}
-                    </h3>
+                      {/* Incident Title */}
+                      <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors truncate">
+                        {inc.title}
+                      </h3>
 
-                    {/* Summary Snippet */}
-                    <p className="text-slate-400 text-sm line-clamp-2 leading-relaxed">
-                      {inc.summary}
-                    </p>
+                      {/* Summary Snippet */}
+                      <p className="text-slate-400 text-sm line-clamp-2 leading-relaxed">
+                        {inc.summary}
+                      </p>
 
-                    <div className="flex items-center gap-4 pt-1.5 text-xs text-slate-500">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        Detected {dateVal}
-                      </span>
-                      {inc.ttr && (
-                        <span className="flex items-center gap-1.5 text-emerald-500/80">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/80" />
-                          Resolved in {Math.round(inc.ttr / 1000 / 60)}m
+                      <div className="flex items-center gap-4 pt-1.5 text-xs text-slate-500">
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          Detected {dateVal}
                         </span>
-                      )}
+                        {inc.ttr && (
+                          <span className="flex items-center gap-1.5 text-emerald-500/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/80" />
+                            Resolved in {Math.round(inc.ttr / 1000 / 60)}m
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center self-end md:self-center shrink-0">
-                    <Button asChild variant="secondary" size="sm">
-                      <NextLink
-                        href={`/dashboard/incidents/${inc.id}?projectId=${project.id}`}
-                        className="flex items-center gap-1.5"
+                    <div className="flex items-center self-end md:self-center shrink-0">
+                      <Button asChild variant="secondary" size="sm">
+                        <NextLink
+                          href={`/dashboard/incidents/${inc.id}?projectId=${project.id}`}
+                          className="flex items-center gap-1.5"
+                        >
+                          Investigate
+                          <ArrowRight className="w-3.5 h-3.5 text-indigo-500 group-hover:translate-x-0.5 transition-transform" />
+                        </NextLink>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Pagination Navigation Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-slate-900 bg-slate-950/70 backdrop-blur-sm mt-6">
+              <div className="text-xs text-slate-400">
+                Page <strong className="text-white">{safeCurrentPage}</strong> of{" "}
+                <strong className="text-white">{totalPages}</strong>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {/* First Page */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 text-xs border-slate-800 bg-slate-900/50 hover:bg-slate-800 disabled:opacity-30"
+                  onClick={() => handlePageChange(1)}
+                  disabled={safeCurrentPage === 1}
+                  title="First Page"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </Button>
+
+                {/* Prev Page */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 text-xs border-slate-800 bg-slate-900/50 hover:bg-slate-800 disabled:opacity-30"
+                  onClick={() => handlePageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage === 1}
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+
+                {/* Page Numbers */}
+                <div className="flex items-center gap-1 mx-1">
+                  {pageNumbers.map((page, idx) => {
+                    if (typeof page === "string") {
+                      return (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="px-1.5 text-xs text-slate-600 select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+
+                    const isCurrent = page === safeCurrentPage;
+                    return (
+                      <Button
+                        key={`page-${page}`}
+                        variant={isCurrent ? "default" : "outline"}
+                        size="icon"
+                        className={`w-8 h-8 text-xs ${
+                          isCurrent
+                            ? "bg-indigo-600 text-white font-bold hover:bg-indigo-500 shadow-md shadow-indigo-500/20"
+                            : "border-slate-800 bg-slate-900/50 text-slate-300 hover:bg-slate-800"
+                        }`}
+                        onClick={() => handlePageChange(page)}
                       >
-                        Investigate
-                        <ArrowRight className="w-3.5 h-3.5 text-indigo-500 group-hover:translate-x-0.5 transition-transform" />
-                      </NextLink>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {/* Next Page */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 text-xs border-slate-800 bg-slate-900/50 hover:bg-slate-800 disabled:opacity-30"
+                  onClick={() => handlePageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage === totalPages}
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+
+                {/* Last Page */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 text-xs border-slate-800 bg-slate-900/50 hover:bg-slate-800 disabled:opacity-30"
+                  onClick={() => handlePageChange(totalPages)}
+                  disabled={safeCurrentPage === totalPages}
+                  title="Last Page"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
+
