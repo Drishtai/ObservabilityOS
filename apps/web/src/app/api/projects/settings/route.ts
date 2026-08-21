@@ -11,6 +11,14 @@ const settingsUpdateSchema = z.object({
   slackWebhookUrl: z.string().optional().or(z.literal("")),
   discordWebhookUrl: z.string().optional().or(z.literal("")),
   teamsWebhookUrl: z.string().optional().or(z.literal("")),
+  pagerdutyRoutingKey: z.string().optional().or(z.literal("")),
+  opsgenieApiKey: z.string().optional().or(z.literal("")),
+  opsgenieRegion: z.enum(["us", "eu"]).optional(),
+  jiraHost: z.string().optional().or(z.literal("")),
+  jiraEmail: z.string().optional().or(z.literal("")),
+  jiraApiToken: z.string().optional().or(z.literal("")),
+  jiraProjectKey: z.string().optional().or(z.literal("")),
+  jiraIssueType: z.string().optional().or(z.literal("")),
   minErrorCount: z
     .number()
     .int()
@@ -66,6 +74,15 @@ export async function PATCH(request: Request) {
     project.slackWebhookUrl = validatedData.slackWebhookUrl?.trim() || "";
     project.discordWebhookUrl = validatedData.discordWebhookUrl?.trim() || "";
     project.teamsWebhookUrl = validatedData.teamsWebhookUrl?.trim() || "";
+    project.pagerdutyRoutingKey =
+      validatedData.pagerdutyRoutingKey?.trim() || "";
+    project.opsgenieApiKey = validatedData.opsgenieApiKey?.trim() || "";
+    project.opsgenieRegion = validatedData.opsgenieRegion || "us";
+    project.jiraHost = validatedData.jiraHost?.trim() || "";
+    project.jiraEmail = validatedData.jiraEmail?.trim() || "";
+    project.jiraApiToken = validatedData.jiraApiToken?.trim() || "";
+    project.jiraProjectKey = validatedData.jiraProjectKey?.trim() || "";
+    project.jiraIssueType = validatedData.jiraIssueType?.trim() || "Bug";
     project.minErrorCount = validatedData.minErrorCount;
     project.zScoreThreshold = validatedData.zScoreThreshold;
 
@@ -95,6 +112,14 @@ export async function PATCH(request: Request) {
         slackWebhookUrl: project.slackWebhookUrl,
         discordWebhookUrl: project.discordWebhookUrl,
         teamsWebhookUrl: project.teamsWebhookUrl,
+        pagerdutyRoutingKey: project.pagerdutyRoutingKey,
+        opsgenieApiKey: project.opsgenieApiKey,
+        opsgenieRegion: project.opsgenieRegion,
+        jiraHost: project.jiraHost,
+        jiraEmail: project.jiraEmail,
+        jiraApiToken: project.jiraApiToken,
+        jiraProjectKey: project.jiraProjectKey,
+        jiraIssueType: project.jiraIssueType,
         minErrorCount: project.minErrorCount,
         zScoreThreshold: project.zScoreThreshold,
       },

@@ -1029,12 +1029,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@observability-os/sdk@workspace:packages/sdk":
+"@observability-os/sdk@workspace:*, @observability-os/sdk@workspace:packages/sdk":
   version: 0.0.0-use.local
   resolution: "@observability-os/sdk@workspace:packages/sdk"
   dependencies:
     "@repo/typescript-config": "npm:*"
+    "@types/node": "npm:^20.0.0"
     typescript: "npm:5.9.2"
+  languageName: unknown
+  linkType: soft
+
+"@observability-os/shipper@workspace:packages/shipper":
+  version: 0.0.0-use.local
+  resolution: "@observability-os/shipper@workspace:packages/shipper"
+  dependencies:
+    "@observability-os/sdk": "workspace:*"
+    "@repo/typescript-config": "workspace:*"
+    "@types/node": "npm:^20.0.0"
+    typescript: "npm:5.9.2"
+    vitest: "npm:^4.1.8"
+  bin:
+    obs-shipper: ./dist/cli.js
   languageName: unknown
   linkType: soft
 
@@ -2232,7 +2247,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@repo/typescript-config@npm:*, @repo/typescript-config@workspace:packages/typescript-config":
+"@repo/typescript-config@npm:*, @repo/typescript-config@workspace:*, @repo/typescript-config@workspace:packages/typescript-config":
   version: 0.0.0-use.local
   resolution: "@repo/typescript-config@workspace:packages/typescript-config"
   languageName: unknown
@@ -3507,7 +3522,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^20":
+"@types/node@npm:^20, @types/node@npm:^20.0.0":
   version: 20.19.43
   resolution: "@types/node@npm:20.19.43"
   dependencies:

@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { connectToDatabase, Project, Membership, IProject } from "@repo/db";
+import { connectToDatabase, Project, Membership, ProjectDocument } from "@repo/db";
 
 export type ProjectRole = "owner" | "admin" | "member" | "viewer";
 
@@ -13,13 +13,13 @@ const ROLE_RANK: Record<ProjectRole, number> = {
 export interface MembershipResult {
   isMember: boolean;
   role: ProjectRole | null;
-  project: IProject | null;
+  project: ProjectDocument | null;
 }
 
 export interface PermissionCheckResult {
   authorized: boolean;
   role: ProjectRole | null;
-  project: IProject | null;
+  project: ProjectDocument | null;
   error?: {
     code: "NOT_FOUND" | "FORBIDDEN" | "BAD_REQUEST";
     message: string;

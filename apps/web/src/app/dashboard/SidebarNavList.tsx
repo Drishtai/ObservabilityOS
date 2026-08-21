@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   AlertOctagon,
   Search,
+  Network,
   Terminal,
   CreditCard,
   Settings,
@@ -94,6 +95,24 @@ export default function SidebarNavList({
           >
             <Search className="w-4 h-4 text-indigo-400" />
             Log Search
+          </Link>
+
+          <Link
+            id="nav_traces"
+            href={
+              activeProjectId
+                ? `/dashboard/traces?projectId=${activeProjectId}`
+                : "/dashboard/traces"
+            }
+            onClick={handleLinkClick}
+            className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              pathname.startsWith("/dashboard/traces")
+                ? "bg-indigo-600/15 border border-indigo-500/30 text-white font-semibold"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+            }`}
+          >
+            <Network className="w-4 h-4 text-indigo-400" />
+            APM Traces
           </Link>
 
           <Link

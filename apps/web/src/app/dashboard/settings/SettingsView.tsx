@@ -16,6 +16,8 @@ import {
   Trash2,
   Crown,
   Shield,
+  HardDrive,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +41,14 @@ interface SettingsViewProps {
     slackWebhookUrl: string;
     discordWebhookUrl: string;
     teamsWebhookUrl: string;
+    pagerdutyRoutingKey?: string;
+    opsgenieApiKey?: string;
+    opsgenieRegion?: "us" | "eu";
+    jiraHost?: string;
+    jiraEmail?: string;
+    jiraApiToken?: string;
+    jiraProjectKey?: string;
+    jiraIssueType?: string;
     minErrorCount: number;
     zScoreThreshold: number;
   };
@@ -222,12 +232,79 @@ export default function SettingsView({ project }: SettingsViewProps) {
     [project.id],
   );
 
+  const [retentionStats, setRetentionStats] = useState<{
+    plan: string;
+    retentionDays: number;
+    thresholdDate: string;
+    oldestRecordDate: string | null;
+    totalRecords: number;
+    totalLogs: number;
+    totalMetrics: number;
+    totalSpans: number;
+    expiredRecords: number;
+    expiredLogs: number;
+    expiredMetrics: number;
+    expiredSpans: number;
+  } | null>(null);
+  const [isLoadingRetention, setIsLoadingRetention] = useState(true);
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeMessage, setPurgeMessage] = useState<string | null>(null);
+
+  const fetchRetentionStats = useCallback(async () => {
+    setIsLoadingRetention(true);
+    try {
+      const res = await fetch(
+        `/api/projects/retention?projectId=${project.id}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setRetentionStats(data.retention || null);
+      }
+    } catch (err) {
+      console.error("Failed to load retention stats:", err);
+    } finally {
+      setIsLoadingRetention(false);
+    }
+  }, [project.id]);
+
+  const handleManualPurge = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to permanently purge records older than your plan retention window?",
+      )
+    ) {
+      return;
+    }
+    setIsPurging(true);
+    setPurgeMessage(null);
+    try {
+      const res = await fetch("/api/projects/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPurgeMessage(
+          `Purged ${data.purged.totalDeleted} expired records (${data.purged.deletedLogsCount} logs, ${data.purged.deletedSpansCount} spans, ${data.purged.deletedMetricsCount} metrics).`,
+        );
+        fetchRetentionStats();
+      }
+    } catch (err) {
+      console.error(err);
+      setPurgeMessage("Failed to execute retention purge.");
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   useEffect(() => {
     Promise.resolve().then(() => {
       fetchAuditLogs(false);
       fetchMembers(false);
+      fetchRetentionStats();
     });
-  }, [fetchAuditLogs, fetchMembers]);
+  }, [fetchAuditLogs, fetchMembers, fetchRetentionStats]);
 
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,6 +404,24 @@ export default function SettingsView({ project }: SettingsViewProps) {
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState(
     project.teamsWebhookUrl || "",
   );
+  const [pagerdutyRoutingKey, setPagerdutyRoutingKey] = useState(
+    project.pagerdutyRoutingKey || "",
+  );
+  const [opsgenieApiKey, setOpsgenieApiKey] = useState(
+    project.opsgenieApiKey || "",
+  );
+  const [opsgenieRegion, setOpsgenieRegion] = useState<"us" | "eu">(
+    project.opsgenieRegion || "us",
+  );
+  const [jiraHost, setJiraHost] = useState(project.jiraHost || "");
+  const [jiraEmail, setJiraEmail] = useState(project.jiraEmail || "");
+  const [jiraApiToken, setJiraApiToken] = useState(project.jiraApiToken || "");
+  const [jiraProjectKey, setJiraProjectKey] = useState(
+    project.jiraProjectKey || "",
+  );
+  const [jiraIssueType, setJiraIssueType] = useState(
+    project.jiraIssueType || "Bug",
+  );
   const [minErrorCount, setMinErrorCount] = useState(project.minErrorCount);
   const [zScoreThreshold, setZScoreThreshold] = useState(
     project.zScoreThreshold,
@@ -354,6 +449,14 @@ export default function SettingsView({ project }: SettingsViewProps) {
           slackWebhookUrl: slackWebhookUrl.trim(),
           discordWebhookUrl: discordWebhookUrl.trim(),
           teamsWebhookUrl: teamsWebhookUrl.trim(),
+          pagerdutyRoutingKey: pagerdutyRoutingKey.trim(),
+          opsgenieApiKey: opsgenieApiKey.trim(),
+          opsgenieRegion,
+          jiraHost: jiraHost.trim(),
+          jiraEmail: jiraEmail.trim(),
+          jiraApiToken: jiraApiToken.trim(),
+          jiraProjectKey: jiraProjectKey.trim(),
+          jiraIssueType: jiraIssueType.trim(),
           minErrorCount: Number(minErrorCount),
           zScoreThreshold: Number(zScoreThreshold),
         }),
@@ -600,6 +703,184 @@ export default function SettingsView({ project }: SettingsViewProps) {
               <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
                 Pushes Office 365 Connector cards to Microsoft Teams channel on
                 alerts.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SRE On-Call & Issue Tracking Integrations */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+          <CardHeader>
+            <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-indigo-400" />
+              SRE On-Call & Issue Tracking (PagerDuty, Opsgenie, Jira)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6 max-w-2xl">
+            {/* PagerDuty */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  PagerDuty (Events API v2)
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  On-Call Routing
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pagerdutyKey" className="text-xs">
+                  Routing / Integration Key
+                </Label>
+                <Input
+                  id="pagerdutyKey"
+                  type="password"
+                  value={pagerdutyRoutingKey}
+                  onChange={(e) => setPagerdutyRoutingKey(e.target.value)}
+                  placeholder="e.g. 0123456789abcdef0123456789abcdef"
+                  className="font-mono placeholder:text-slate-700 text-xs"
+                />
+                <p className="text-[10px] text-slate-500">
+                  Automatically triggers high-urgency PagerDuty incidents and
+                  resolves them when SLO recovers.
+                </p>
+              </div>
+            </div>
+
+            {/* Opsgenie */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  Atlassian Opsgenie
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  Incident Alerting
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="opsgenieKey" className="text-xs">
+                    Opsgenie API Key
+                  </Label>
+                  <Input
+                    id="opsgenieKey"
+                    type="password"
+                    value={opsgenieApiKey}
+                    onChange={(e) => setOpsgenieApiKey(e.target.value)}
+                    placeholder="e.g. eb9197c3-xxxx-xxxx-xxxx"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="opsgenieRegion" className="text-xs">
+                    Region
+                  </Label>
+                  <select
+                    id="opsgenieRegion"
+                    value={opsgenieRegion}
+                    onChange={(e) =>
+                      setOpsgenieRegion(e.target.value as "us" | "eu")
+                    }
+                    className="w-full h-9 rounded-md border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="us">US (api.opsgenie.com)</option>
+                    <option value="eu">EU (api.eu.opsgenie.com)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Jira */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  Jira Software Cloud
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  Auto-Create Tickets
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraHost" className="text-xs">
+                    Jira Host URL
+                  </Label>
+                  <Input
+                    id="jiraHost"
+                    type="url"
+                    value={jiraHost}
+                    onChange={(e) => setJiraHost(e.target.value)}
+                    placeholder="https://yourcompany.atlassian.net"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraEmail" className="text-xs">
+                    Atlassian Account Email
+                  </Label>
+                  <Input
+                    id="jiraEmail"
+                    type="email"
+                    value={jiraEmail}
+                    onChange={(e) => setJiraEmail(e.target.value)}
+                    placeholder="sre-bot@company.com"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraApiToken" className="text-xs">
+                    Jira API Token
+                  </Label>
+                  <Input
+                    id="jiraApiToken"
+                    type="password"
+                    value={jiraApiToken}
+                    onChange={(e) => setJiraApiToken(e.target.value)}
+                    placeholder="Atlassian API token"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="jiraProjectKey" className="text-xs">
+                      Project Key
+                    </Label>
+                    <Input
+                      id="jiraProjectKey"
+                      type="text"
+                      value={jiraProjectKey}
+                      onChange={(e) => setJiraProjectKey(e.target.value)}
+                      placeholder="e.g. SRE"
+                      className="font-mono placeholder:text-slate-700 text-xs uppercase"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="jiraIssueType" className="text-xs">
+                      Issue Type
+                    </Label>
+                    <Input
+                      id="jiraIssueType"
+                      type="text"
+                      value={jiraIssueType}
+                      onChange={(e) => setJiraIssueType(e.target.value)}
+                      placeholder="Bug"
+                      className="font-mono placeholder:text-slate-700 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Automatically opens a Jira ticket when an AI-detected incident
+                or critical SLO breach occurs.
               </p>
             </div>
           </CardContent>
@@ -855,6 +1136,113 @@ export default function SettingsView({ project }: SettingsViewProps) {
         </CardContent>
       </Card>
 
+      {/* Data Retention & Storage Lifecycle Section */}
+      <Card className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-slate-800/60">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-indigo-400" />
+            <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
+              Data Retention & Storage Lifecycle
+            </CardTitle>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => fetchRetentionStats()}
+            className="text-slate-500 hover:text-slate-300"
+            title="Refresh retention stats"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${isLoadingRetention ? "animate-spin" : ""}`}
+            />
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-5 space-y-4">
+          {isLoadingRetention ? (
+            <div className="text-center py-6 flex items-center justify-center gap-2 text-slate-500 text-xs">
+              <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+              Calculating project storage retention...
+            </div>
+          ) : retentionStats ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Plan Retention Window
+                  </div>
+                  <div className="text-base font-bold text-white mt-1 flex items-center gap-1.5 font-mono">
+                    <Clock className="w-4 h-4 text-indigo-400" />
+                    {retentionStats.retentionDays} Days
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 capitalize">
+                    {retentionStats.plan} Tier Limit
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Active Storage Count
+                  </div>
+                  <div className="text-base font-bold text-white mt-1 font-mono">
+                    {retentionStats.totalRecords.toLocaleString()} items
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    {retentionStats.totalLogs.toLocaleString()} logs ·{" "}
+                    {retentionStats.totalSpans.toLocaleString()} spans ·{" "}
+                    {retentionStats.totalMetrics.toLocaleString()} metrics
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Expired & Cleanable
+                  </div>
+                  <div className="text-base font-bold text-amber-400 mt-1 font-mono">
+                    {retentionStats.expiredRecords.toLocaleString()} items
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Older than{" "}
+                    {new Date(
+                      retentionStats.thresholdDate,
+                    ).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+
+              {purgeMessage && (
+                <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-xs text-indigo-300 font-medium">
+                  {purgeMessage}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                <p className="text-xs text-slate-500">
+                  Scheduled daily cron automatically purges data older than your
+                  plan retention threshold.
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleManualPurge}
+                  disabled={isPurging || retentionStats.expiredRecords === 0}
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-800 hover:bg-rose-500/10 hover:text-rose-400 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  {isPurging ? "Purging data..." : "Purge Expired Data Now"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Retention statistics unavailable.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Danger Zone */}
       <Card className="border border-rose-500/20 bg-rose-500/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-rose-500/5 to-transparent pointer-events-none" />
@@ -884,7 +1272,6 @@ export default function SettingsView({ project }: SettingsViewProps) {
           </div>
         </CardContent>
       </Card>
-
       {/* System & Project Audit Logs Section */}
       <Card className="relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />

@@ -19,6 +19,14 @@ export interface IProject {
   slackWebhookUrl?: string;
   discordWebhookUrl?: string;
   teamsWebhookUrl?: string;
+  pagerdutyRoutingKey?: string;
+  opsgenieApiKey?: string;
+  opsgenieRegion?: "us" | "eu";
+  jiraHost?: string;
+  jiraEmail?: string;
+  jiraApiToken?: string;
+  jiraProjectKey?: string;
+  jiraIssueType?: string;
   minErrorCount?: number;
   zScoreThreshold?: number;
   plan: "free" | "pro" | "self-host";
@@ -62,6 +70,14 @@ const ProjectSchema = new Schema<IProject>(
     slackWebhookUrl: { type: String, default: "" },
     discordWebhookUrl: { type: String, default: "" },
     teamsWebhookUrl: { type: String, default: "" },
+    pagerdutyRoutingKey: { type: String, default: "" },
+    opsgenieApiKey: { type: String, default: "" },
+    opsgenieRegion: { type: String, enum: ["us", "eu"], default: "us" },
+    jiraHost: { type: String, default: "" },
+    jiraEmail: { type: String, default: "" },
+    jiraApiToken: { type: String, default: "" },
+    jiraProjectKey: { type: String, default: "" },
+    jiraIssueType: { type: String, default: "Bug" },
     minErrorCount: { type: Number, default: 3 },
     zScoreThreshold: { type: Number, default: 3.0 },
     plan: { type: String, enum: ["free", "pro", "self-host"], default: "free" },

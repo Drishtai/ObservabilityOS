@@ -205,4 +205,56 @@ describe("ObservabilityOS SDK Logger", () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(timer);
     expect(logger["flushTimer"]).toBeNull();
   });
+
+  it("should locally scrub PII from message and metadata before transmission", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const logger = new Logger({
+      apiKey: "test-key",
+      defaultService: "test-service",
+      batchSize: 1,
+      flushIntervalMs: 0,
+    });
+
+    logger.info(
+      "User john.doe@example.com used Bearer secret_token_12345678 to connect to mongodb://admin:mySecretPass123@cluster0.mongodb.net",
+      {
+        metadata: {
+          password: "SuperSecretPassword!",
+          apiKey: "api_key_live_9999",
+          creditCard: "4111111111111111",
+          email: "alice@domain.org",
+          nested: {
+            token: "nested_secret_token",
+            userEmail: "bob@company.com",
+          },
+        },
+      },
+    );
+
+    await vi.runAllTimersAsync();
+    await logger["activeFlushPromise"];
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const callArgs = fetchMock.mock.calls[0];
+    const options = callArgs?.[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(body[0].message).not.toContain("john.doe@example.com");
+    expect(body[0].message).toContain("[EMAIL_REDACTED]");
+    expect(body[0].message).not.toContain("secret_token_12345678");
+    expect(body[0].message).toContain("Bearer [TOKEN_REDACTED]");
+    expect(body[0].message).not.toContain("mySecretPass123");
+    expect(body[0].message).toContain(":[PASSWORD_REDACTED]@");
+
+    expect(body[0].metadata.password).toBe("[REDACTED]");
+    expect(body[0].metadata.apiKey).toBe("[REDACTED]");
+    expect(body[0].metadata.creditCard).toBe("[CARD_REDACTED]");
+    expect(body[0].metadata.email).toBe("[EMAIL_REDACTED]");
+    expect(body[0].metadata.nested.token).toBe("[REDACTED]");
+    expect(body[0].metadata.nested.userEmail).toBe("[EMAIL_REDACTED]");
+
+    logger.destroy();
+  });
 });

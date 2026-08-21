@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Example Application Service
+  my-app:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - app-logs:/var/log/nginx
+
+  # ObservabilityOS Sidecar Log Shipper
+  observability-shipper:
+    build:
+      context: ../..
+      dockerfile: packages/shipper/Dockerfile
+    environment:
+      - OBSERVABILITY_API_KEY=obs_sk_your_project_key
+      - OBSERVABILITY_ENDPOINT=https://your-observabilityos-instance.com
+      - OBSERVABILITY_SERVICE=web-gateway
+      - OBSERVABILITY_ENV=prod
+    volumes:
+      - app-logs:/var/log/nginx:ro
+    command:
+      - "--tail"
+      - "/var/log/nginx/access.log"
+      - "--from-beginning"
+      - "--enable-metrics"
+    restart: unless-stopped
+    depends_on:
+      - my-app
+
+volumes:
+  app-logs:
