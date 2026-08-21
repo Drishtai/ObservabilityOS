@@ -158,6 +158,13 @@ export async function buildAndSendEmailDigest(user: {
         projectName: project.name,
         incidents: incidentDigestContexts,
         bypassLLM: project.plan === "free",
+        aiConfig: {
+          provider: project.aiProvider,
+          apiKey: project.aiApiKey,
+          model: project.aiModel,
+          baseUrl: project.aiBaseUrl,
+          enabled: project.aiEnabled,
+        },
       });
     } catch (err) {
       console.error(

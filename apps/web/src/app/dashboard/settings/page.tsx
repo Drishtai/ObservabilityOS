@@ -40,6 +40,13 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     jiraIssueType: activeProject.jiraIssueType || "Bug",
     minErrorCount: activeProject.minErrorCount ?? 3,
     zScoreThreshold: activeProject.zScoreThreshold ?? 3.0,
+    aiProvider: activeProject.aiProvider || "system",
+    aiApiKey: activeProject.aiApiKey
+      ? `${activeProject.aiApiKey.slice(0, 4)}••••••••${activeProject.aiApiKey.slice(-4)}`
+      : "",
+    aiModel: activeProject.aiModel || "",
+    aiBaseUrl: activeProject.aiBaseUrl || "",
+    aiEnabled: activeProject.aiEnabled ?? true,
   };
 
   return <SettingsView project={serializedProject} />;

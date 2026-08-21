@@ -20,6 +20,14 @@ export interface HistoricalIncident {
   comments?: string[];
 }
 
+export interface AIConfig {
+  provider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  enabled?: boolean;
+}
+
 export interface IncidentPromptInput {
   serviceName: string;
   environment: string;
@@ -29,6 +37,7 @@ export interface IncidentPromptInput {
   deploys: DeployContext[];
   historicalIncidents?: HistoricalIncident[];
   bypassLLM?: boolean;
+  aiConfig?: AIConfig;
 }
 
 export function generateIncidentPrompt(input: IncidentPromptInput): string {

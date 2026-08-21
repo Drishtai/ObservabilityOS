@@ -7,10 +7,13 @@ export interface IncidentDigestContext {
   rootCause: string;
 }
 
+import type { AIConfig } from "./incident";
+
 export interface DigestPromptInput {
   projectName: string;
   incidents: IncidentDigestContext[];
   bypassLLM?: boolean;
+  aiConfig?: AIConfig;
 }
 
 export function generateDigestPrompt(input: DigestPromptInput): string {

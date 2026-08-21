@@ -44,6 +44,11 @@ export interface IProject {
   razorpaySubscriptionId?: string;
   subscriptionEndsAt?: Date;
   savedQueries?: ISavedQuery[];
+  aiProvider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
+  aiApiKey?: string;
+  aiModel?: string;
+  aiBaseUrl?: string;
+  aiEnabled?: boolean;
 }
 
 export type ProjectDocument = IProject & Document;
@@ -104,6 +109,15 @@ const ProjectSchema = new Schema<IProject>(
     razorpaySubscriptionId: { type: String },
     subscriptionEndsAt: { type: Date },
     savedQueries: { type: [SavedQuerySchema], default: [] },
+    aiProvider: {
+      type: String,
+      enum: ["system", "openai", "anthropic", "aicredits", "custom"],
+      default: "system",
+    },
+    aiApiKey: { type: String, default: "" },
+    aiModel: { type: String, default: "" },
+    aiBaseUrl: { type: String, default: "" },
+    aiEnabled: { type: Boolean, default: true },
   },
   { timestamps: true },
 );

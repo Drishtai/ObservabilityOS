@@ -197,6 +197,121 @@ function parseJSONContentAndValidate(text: string): IncidentAnalysis {
   };
 }
 
+async function callCustomOrProviderLLM(
+  prompt: string,
+  aiConfig?: {
+    provider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
+    apiKey?: string;
+    model?: string;
+    baseUrl?: string;
+    enabled?: boolean;
+  },
+  isJsonFormat = true,
+): Promise<string | null> {
+  if (!aiConfig || aiConfig.provider === "system") return null;
+  const { provider, apiKey, model, baseUrl } = aiConfig;
+
+  // OpenAI / Custom / OpenAI-Compatible (Groq, Together, Ollama, OpenRouter, AICredits)
+  if (
+    provider === "openai" ||
+    provider === "custom" ||
+    (provider === "aicredits" && apiKey)
+  ) {
+    const key =
+      apiKey ||
+      (provider === "openai"
+        ? process.env.OPENAI_API_KEY
+        : process.env.AICREDITS_API_KEY);
+    if (!key && provider !== "custom") return null;
+
+    const url = baseUrl
+      ? `${baseUrl.replace(/\/+$/, "")}/chat/completions`
+      : provider === "aicredits"
+        ? "https://aicredits.in/v1/chat/completions"
+        : "https://api.openai.com/v1/chat/completions";
+
+    const defaultModel =
+      provider === "aicredits" ? "openai/gpt-4o-mini" : "gpt-4o-mini";
+    const selectedModel = model?.trim() || defaultModel;
+
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (key) {
+      headers["Authorization"] = `Bearer ${key}`;
+    }
+
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: selectedModel,
+            max_tokens: isJsonFormat ? 1500 : 300,
+            messages: [{ role: "user", content: prompt }],
+            response_format: isJsonFormat ? { type: "json_object" } : undefined,
+          }),
+        },
+        10000,
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "";
+      } else {
+        console.warn(
+          `[AI Custom/OpenAI Provider Error]: Status ${response.status} from ${url}`,
+        );
+      }
+    } catch (err) {
+      console.warn(`[AI Custom/OpenAI Provider Exception]:`, err);
+    }
+  } else if (provider === "anthropic") {
+    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!key) return null;
+
+    const selectedModel = model?.trim() || "claude-3-5-haiku-20241022";
+    const url = baseUrl
+      ? `${baseUrl.replace(/\/+$/, "")}/v1/messages`
+      : "https://api.anthropic.com/v1/messages";
+
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: "POST",
+          headers: {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            max_tokens: isJsonFormat ? 1500 : 300,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        },
+        10000,
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.content?.[0]?.text || "";
+      } else {
+        console.warn(
+          `[AI Anthropic Provider Error]: Status ${response.status} from ${url}`,
+        );
+      }
+    } catch (err) {
+      console.warn(`[AI Anthropic Provider Exception]:`, err);
+    }
+  }
+
+  return null;
+}
+
 /**
  * Invokes LLM providers (Anthropic Claude, OpenAI GPT-4o-mini) depending on active environment variables.
  * Falls back to a high-quality mock heuristic analyzer if no API keys are present.
@@ -208,14 +323,41 @@ export async function generateIncidentAnalysis(
   const isPlayground = input.logs.some(
     (l) => l.traceId && l.traceId.startsWith("trace_playground_"),
   );
-  if (isPlayground || input.bypassLLM) {
+  if (
+    isPlayground ||
+    input.bypassLLM ||
+    input.aiConfig?.enabled === false
+  ) {
     console.log(
-      `[ObservabilityOS AI] Bypassing LLM API call (Reason: ${isPlayground ? "Playground simulation" : "Free Developer plan limit"}). Returning mock analysis.`,
+      `[ObservabilityOS AI] Bypassing LLM API call (Reason: ${isPlayground ? "Playground simulation" : input.aiConfig?.enabled === false ? "AI disabled in project settings" : "Free Developer plan limit"}). Returning mock analysis.`,
     );
     return generateMockAnalysis(input);
   }
 
   const prompt = generateIncidentPrompt(input);
+
+  // If user configured a custom/project-level AI provider
+  if (
+    input.aiConfig &&
+    input.aiConfig.provider &&
+    input.aiConfig.provider !== "system"
+  ) {
+    const customResult = await callCustomOrProviderLLM(
+      prompt,
+      input.aiConfig,
+      true,
+    );
+    if (customResult) {
+      try {
+        return parseJSONContentAndValidate(customResult);
+      } catch (parseErr) {
+        console.warn(
+          "[ObservabilityOS AI] Custom LLM returned unparseable JSON, falling back to default chain...",
+          parseErr,
+        );
+      }
+    }
+  }
 
   const AICREDITS_API_KEY = process.env.AICREDITS_API_KEY;
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -588,14 +730,30 @@ function generateMockEmailDigestSummary(input: DigestPromptInput): string {
 export async function generateEmailDigestSummary(
   input: DigestPromptInput,
 ): Promise<string> {
-  if (input.bypassLLM) {
+  if (input.bypassLLM || input.aiConfig?.enabled === false) {
     console.log(
-      "[ObservabilityOS AI] Bypassing LLM email digest call (Reason: Free Developer plan limit). Returning mock summary.",
+      "[ObservabilityOS AI] Bypassing LLM email digest call (Reason: AI disabled or Free Developer plan limit). Returning mock summary.",
     );
     return generateMockEmailDigestSummary(input);
   }
 
   const prompt = generateDigestPrompt(input);
+
+  // If user configured a custom/project-level AI provider
+  if (
+    input.aiConfig &&
+    input.aiConfig.provider &&
+    input.aiConfig.provider !== "system"
+  ) {
+    const customResult = await callCustomOrProviderLLM(
+      prompt,
+      input.aiConfig,
+      false,
+    );
+    if (customResult) {
+      return customResult.trim();
+    }
+  }
 
   const AICREDITS_API_KEY = process.env.AICREDITS_API_KEY;
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;

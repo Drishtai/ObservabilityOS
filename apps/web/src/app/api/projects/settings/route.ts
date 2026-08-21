@@ -19,6 +19,13 @@ const settingsUpdateSchema = z.object({
   jiraApiToken: z.string().optional().or(z.literal("")),
   jiraProjectKey: z.string().optional().or(z.literal("")),
   jiraIssueType: z.string().optional().or(z.literal("")),
+  aiProvider: z
+    .enum(["system", "openai", "anthropic", "aicredits", "custom"])
+    .optional(),
+  aiApiKey: z.string().optional().or(z.literal("")),
+  aiModel: z.string().optional().or(z.literal("")),
+  aiBaseUrl: z.string().optional().or(z.literal("")),
+  aiEnabled: z.boolean().optional(),
   minErrorCount: z
     .number()
     .int()
@@ -69,6 +76,14 @@ export async function PATCH(request: Request) {
       project.teamsWebhookUrl !== (validatedData.teamsWebhookUrl?.trim() || "");
     const webhookUpdated = slackChanged || discordChanged || teamsChanged;
 
+    // Check if AI settings changed
+    const aiUpdated =
+      validatedData.aiProvider !== undefined ||
+      validatedData.aiApiKey !== undefined ||
+      validatedData.aiModel !== undefined ||
+      validatedData.aiBaseUrl !== undefined ||
+      validatedData.aiEnabled !== undefined;
+
     // Update settings
     project.name = validatedData.name.trim();
     project.slackWebhookUrl = validatedData.slackWebhookUrl?.trim() || "";
@@ -86,6 +101,25 @@ export async function PATCH(request: Request) {
     project.minErrorCount = validatedData.minErrorCount;
     project.zScoreThreshold = validatedData.zScoreThreshold;
 
+    if (validatedData.aiProvider !== undefined) {
+      project.aiProvider = validatedData.aiProvider;
+    }
+    if (
+      validatedData.aiApiKey !== undefined &&
+      !validatedData.aiApiKey.includes("••••")
+    ) {
+      project.aiApiKey = validatedData.aiApiKey.trim();
+    }
+    if (validatedData.aiModel !== undefined) {
+      project.aiModel = validatedData.aiModel.trim();
+    }
+    if (validatedData.aiBaseUrl !== undefined) {
+      project.aiBaseUrl = validatedData.aiBaseUrl.trim();
+    }
+    if (validatedData.aiEnabled !== undefined) {
+      project.aiEnabled = validatedData.aiEnabled;
+    }
+
     await project.save();
 
     if (webhookUpdated) {
@@ -102,6 +136,26 @@ export async function PATCH(request: Request) {
         },
       });
     }
+
+    if (aiUpdated) {
+      await logAuditEvent({
+        projectId: project._id.toString(),
+        userId: user._id.toString(),
+        action: "ai.update",
+        targetEntity: "project",
+        targetId: project._id.toString(),
+        metadata: {
+          aiProvider: project.aiProvider,
+          aiEnabled: project.aiEnabled,
+          aiModel: project.aiModel,
+        },
+      });
+    }
+
+    // Mask API key for response
+    const maskedAiApiKey = project.aiApiKey
+      ? `${project.aiApiKey.slice(0, 4)}••••••••${project.aiApiKey.slice(-4)}`
+      : "";
 
     return NextResponse.json({
       success: true,
@@ -122,6 +176,12 @@ export async function PATCH(request: Request) {
         jiraIssueType: project.jiraIssueType,
         minErrorCount: project.minErrorCount,
         zScoreThreshold: project.zScoreThreshold,
+        aiProvider: project.aiProvider || "system",
+        aiApiKey: maskedAiApiKey,
+        hasCustomAiKey: !!project.aiApiKey,
+        aiModel: project.aiModel || "",
+        aiBaseUrl: project.aiBaseUrl || "",
+        aiEnabled: project.aiEnabled ?? true,
       },
     });
   } catch (error) {

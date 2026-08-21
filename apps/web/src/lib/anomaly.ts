@@ -486,6 +486,15 @@ export async function processAnomalyDetection(
       deploys: deployContexts,
       historicalIncidents,
       bypassLLM: projectDoc?.plan === "free",
+      aiConfig: projectDoc
+        ? {
+            provider: projectDoc.aiProvider,
+            apiKey: projectDoc.aiApiKey,
+            model: projectDoc.aiModel,
+            baseUrl: projectDoc.aiBaseUrl,
+            enabled: projectDoc.aiEnabled,
+          }
+        : undefined,
     });
   } catch (err) {
     console.error(

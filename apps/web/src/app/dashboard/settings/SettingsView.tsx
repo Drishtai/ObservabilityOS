@@ -18,6 +18,11 @@ import {
   Shield,
   HardDrive,
   Clock,
+  Sparkles,
+  Bot,
+  Eye,
+  EyeOff,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +56,11 @@ interface SettingsViewProps {
     jiraIssueType?: string;
     minErrorCount: number;
     zScoreThreshold: number;
+    aiProvider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
+    aiApiKey?: string;
+    aiModel?: string;
+    aiBaseUrl?: string;
+    aiEnabled?: boolean;
   };
 }
 
@@ -427,6 +437,16 @@ export default function SettingsView({ project }: SettingsViewProps) {
     project.zScoreThreshold,
   );
 
+  // AI Configuration State
+  const [aiEnabled, setAiEnabled] = useState(project.aiEnabled ?? true);
+  const [aiProvider, setAiProvider] = useState<
+    "system" | "openai" | "anthropic" | "aicredits" | "custom"
+  >(project.aiProvider || "system");
+  const [aiApiKey, setAiApiKey] = useState(project.aiApiKey || "");
+  const [aiModel, setAiModel] = useState(project.aiModel || "");
+  const [aiBaseUrl, setAiBaseUrl] = useState(project.aiBaseUrl || "");
+  const [showAiKey, setShowAiKey] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
@@ -459,6 +479,11 @@ export default function SettingsView({ project }: SettingsViewProps) {
           jiraIssueType: jiraIssueType.trim(),
           minErrorCount: Number(minErrorCount),
           zScoreThreshold: Number(zScoreThreshold),
+          aiProvider,
+          aiApiKey: aiApiKey.trim(),
+          aiModel: aiModel.trim(),
+          aiBaseUrl: aiBaseUrl.trim(),
+          aiEnabled,
         }),
       });
 
@@ -883,6 +908,184 @@ export default function SettingsView({ project }: SettingsViewProps) {
                 or critical SLO breach occurs.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Root-Cause Analysis & Model Keys Section */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
+                AI Incident Root-Cause Analysis & Provider Keys
+              </CardTitle>
+            </div>
+            <Badge
+              variant="outline"
+              className={`text-[10px] uppercase font-mono tracking-wider ${
+                aiEnabled
+                  ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                  : "border-slate-800 text-slate-500 bg-slate-900"
+              }`}
+            >
+              {aiEnabled ? "AI Enabled" : "AI Disabled"}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-6 max-w-2xl">
+            {/* Enable/Disable Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-lg bg-slate-950/80 border border-slate-800/80">
+              <div className="space-y-0.5">
+                <Label htmlFor="aiToggle" className="text-xs font-semibold text-slate-200 cursor-pointer">
+                  Automated AI Root-Cause Reasoning
+                </Label>
+                <p className="text-[10px] text-slate-500">
+                  When anomalies are detected, AI synthesizes error traces, deploy diffs, and metric shifts into a human-readable diagnosis.
+                </p>
+              </div>
+              <input
+                id="aiToggle"
+                type="checkbox"
+                checked={aiEnabled}
+                onChange={(e) => setAiEnabled(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            {aiEnabled && (
+              <div className="space-y-4">
+                {/* Provider Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="aiProvider" className="text-xs">
+                    AI Intelligence Provider
+                  </Label>
+                  <select
+                    id="aiProvider"
+                    value={aiProvider}
+                    onChange={(e) =>
+                      setAiProvider(
+                        e.target.value as
+                          | "system"
+                          | "openai"
+                          | "anthropic"
+                          | "aicredits"
+                          | "custom"
+                      )
+                    }
+                    className="w-full h-9 rounded-md border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="system">
+                      System Default (Uses platform fallback environment keys)
+                    </option>
+                    <option value="openai">
+                      OpenAI (GPT-4o, GPT-4o-mini)
+                    </option>
+                    <option value="anthropic">
+                      Anthropic Claude (Claude 3.5 Haiku, Claude 3.5 Sonnet)
+                    </option>
+                    <option value="aicredits">
+                      AICredits Gateway (Multi-model SRE routing)
+                    </option>
+                    <option value="custom">
+                      Custom / OpenAI-Compatible (Groq, OpenRouter, Together, Ollama)
+                    </option>
+                  </select>
+                </div>
+
+                {/* API Key Input */}
+                {aiProvider !== "system" && (
+                  <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="aiApiKey" className="text-xs">
+                          {aiProvider === "anthropic"
+                            ? "Anthropic API Key"
+                            : aiProvider === "openai"
+                              ? "OpenAI API Key"
+                              : aiProvider === "aicredits"
+                                ? "AICredits API Key"
+                                : "API Key / Bearer Token"}
+                        </Label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAiKey(!showAiKey)}
+                          className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                        >
+                          {showAiKey ? (
+                            <>
+                              <EyeOff className="w-3 h-3" /> Hide
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-3 h-3" /> Reveal
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <Input
+                        id="aiApiKey"
+                        type={showAiKey ? "text" : "password"}
+                        value={aiApiKey}
+                        onChange={(e) => setAiApiKey(e.target.value)}
+                        placeholder={
+                          aiProvider === "anthropic"
+                            ? "sk-ant-api03-..."
+                            : aiProvider === "openai"
+                              ? "sk-proj-..."
+                              : "Enter API Key"
+                        }
+                        className="font-mono placeholder:text-slate-700 text-xs"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        Leave blank to inherit global server environment variables.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Model Name */}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="aiModel" className="text-xs">
+                          Model Identifier (Optional)
+                        </Label>
+                        <Input
+                          id="aiModel"
+                          type="text"
+                          value={aiModel}
+                          onChange={(e) => setAiModel(e.target.value)}
+                          placeholder={
+                            aiProvider === "anthropic"
+                              ? "claude-3-5-haiku-20241022"
+                              : aiProvider === "openai"
+                                ? "gpt-4o-mini"
+                                : aiProvider === "custom"
+                                  ? "llama-3.3-70b-versatile"
+                                  : "default"
+                          }
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                      </div>
+
+                      {/* Custom Base URL (if custom or OpenAI-compatible) */}
+                      {(aiProvider === "custom" || aiProvider === "openai") && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="aiBaseUrl" className="text-xs">
+                            Base URL / Proxy (Optional)
+                          </Label>
+                          <Input
+                            id="aiBaseUrl"
+                            type="url"
+                            value={aiBaseUrl}
+                            onChange={(e) => setAiBaseUrl(e.target.value)}
+                            placeholder="https://api.groq.com/openai/v1"
+                            className="font-mono placeholder:text-slate-700 text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
