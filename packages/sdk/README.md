@@ -1,14 +1,15 @@
 # @observability-os/sdk
 
-**Zero-dependency TypeScript logger SDK** for [ObservabilityOS](https://github.com/Vaibhav-Singh2/ObservabilityOS) — an AI-native DevOps intelligence and log analytics platform.
+**Zero-dependency TypeScript logger, metrics sampler, and distributed APM tracing SDK** for [ObservabilityOS](https://github.com/Vaibhav-Singh2/ObservabilityOS).
 
 ## Features
 
-- **Zero runtime dependencies** — uses only built-in `fetch`, `setInterval`, `clearInterval`
-- **Batch-and-flush architecture** — logs are queued in memory and flushed when the batch size or flush interval is reached
-- **Automatic retry** — failed API calls re-queue logs for the next flush attempt
-- **Timer safety** — flush interval uses `.unref()` so it doesn't block Node.js process exit
-- **TypeScript first** — full type definitions included
+- **Zero runtime dependencies** — runs universally in Node.js, Next.js, Edge runtime, and modern browsers with zero external npm dependencies.
+- **Client-Side PII Redaction (`scrubber.ts`)** — automatically masks passwords, credit cards, JWT tokens, and authorization headers _before_ transmission.
+- **Distributed APM Tracing (`Tracer` & `Span`)** — trace execution trees across microservices with parent-child span hierarchy and latency tracking.
+- **System & Latency Metrics Auto-Sampler (`MetricsCollector`)** — periodically captures CPU usage, memory consumption, and tracks execution latency.
+- **Batch-and-flush architecture** — logs and spans are queued in memory and flushed asynchronously with exponential retry safety.
+- **Timer safety** — uses `.unref()` timers so background workers do not block Node.js process exits.
 
 ## Installation
 
@@ -22,68 +23,79 @@ pnpm add @observability-os/sdk
 
 ## Quick Start
 
+### 1. Structured Logging & PII Scrubbing
+
 ```typescript
 import { Logger } from "@observability-os/sdk";
 
 const logger = new Logger({
-  apiKey: "your-api-key",
-  defaultService: "my-app",
+  apiKey: "your-project-api-key",
+  endpoint: "https://your-instance.com/api/ingest",
+  defaultService: "payment-api",
   defaultEnvironment: "prod",
+  enableMetrics: true, // Enables CPU & Memory auto-sampling
+  enableTracing: true, // Enables distributed APM tracing
 });
 
-logger.info("Application started");
-logger.warn("High memory usage", { metadata: { memoryMb: 2048 } });
-logger.error("Failed to connect to database", {
-  service: "db-worker",
-  traceId: "abc-123",
+// Logs are scrubbed for PII locally and flushed in batches
+logger.info("Payment processed successfully", {
+  metadata: {
+    userId: "usr_9921",
+    amount: 199.99,
+    password: "WillBeMaskedAutomatically",
+  },
 });
 ```
 
-## API
+### 2. Distributed APM Tracing
+
+```typescript
+// Trace async operations with automatic error status tracking
+const charge = await logger.withSpan("stripe-charge", async (span) => {
+  span.setAttribute("customer.id", "cus_8812");
+  span.addEvent("validating_card", { attempt: 1 });
+
+  return await stripe.charges.create({ ... });
+});
+```
+
+### 3. Measuring Latency
+
+```typescript
+const queryResult = await logger.trackLatency(async () => {
+  return await db.query("SELECT * FROM users WHERE active = true");
+});
+```
+
+## API Reference
 
 ### `LoggerConfig`
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `apiKey` | `string` | — | API key for the ingestion endpoint |
-| `endpoint` | `string` | `http://localhost:3000/api/ingest` | Ingestion API URL |
-| `defaultService` | `string` | — | Default service name for logs |
-| `defaultEnvironment` | `"prod" \| "staging" \| "dev"` | `"dev"` | Default deployment environment |
-| `batchSize` | `number` | `20` | Logs queued before automatic flush |
-| `flushIntervalMs` | `number` | `1000` | Interval in ms between automatic flushes (set to `0` to disable) |
+| Option               | Type                           | Default                            | Description                                   |
+| -------------------- | ------------------------------ | ---------------------------------- | --------------------------------------------- |
+| `apiKey`             | `string`                       | —                                  | Project Ingestion API Key                     |
+| `endpoint`           | `string`                       | `http://localhost:3000/api/ingest` | Base ingestion endpoint                       |
+| `metricsEndpoint`    | `string`                       | `/api/metrics/ingest`              | Metrics ingestion endpoint                    |
+| `tracesEndpoint`     | `string`                       | `/api/traces/ingest`               | Traces ingestion endpoint                     |
+| `defaultService`     | `string`                       | —                                  | Default service name                          |
+| `defaultEnvironment` | `"prod" \| "staging" \| "dev"` | `"dev"`                            | Default deployment environment                |
+| `batchSize`          | `number`                       | `20`                               | Items queued before automatic flush           |
+| `flushIntervalMs`    | `number`                       | `1000`                             | Milliseconds between background flushes       |
+| `enableMetrics`      | `boolean`                      | `false`                            | Enable periodic CPU & memory metrics sampling |
+| `enableTracing`      | `boolean`                      | `false`                            | Enable distributed trace span tracking        |
 
-### `LogOptions`
+### `Logger` Methods
 
-| Option | Type | Description |
-|---|---|---|
-| `service` | `string` | Override the service name for this log |
-| `environment` | `"prod" \| "staging" \| "dev"` | Override the environment for this log |
-| `timestamp` | `Date` | Custom timestamp (defaults to `new Date()`) |
-| `traceId` | `string` | Trace identifier for distributed tracing |
-| `metadata` | `Record<string, any>` | Arbitrary key-value metadata |
-
-### `Logger` methods
-
-| Method | Description |
-|---|---|
-| `log(level, message, options?)` | Log at any severity level |
-| `info(message, options?)` | Log at `info` level |
-| `warn(message, options?)` | Log at `warn` level |
-| `error(message, options?)` | Log at `error` level |
-| `debug(message, options?)` | Log at `debug` level |
-| `flush()` | Immediately flush all queued logs |
-| `destroy()` | Clear the flush interval timer for cleanup |
-
-## Architecture
-
-Logs are queued in memory and flushed to the ObservabilityOS ingestion API in batches. If the API is unreachable or returns an error, logs are automatically re-queued and retried on the next flush cycle.
-
-```
-Your App → Logger.log() → In-memory Queue → /api/ingest → ObservabilityOS
-                          (flush on batch  │
-                           size or timer)  └→ Re-queue on failure
-```
+| Method                                    | Description                                                 |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| `log(level, message, options?)`           | Log with custom options and local PII scrubbing             |
+| `info / warn / error / debug(msg, opts?)` | Convenience log level methods                               |
+| `startSpan(name, options?)`               | Start a new distributed trace span                          |
+| `withSpan(name, fn, options?)`            | Execute an async function wrapped in a trace span           |
+| `trackLatency(fn)`                        | Execute a function and record execution duration            |
+| `flush()`                                 | Immediately flush all queued logs, metrics, and trace spans |
+| `destroy()`                               | Clean up all timers and background workers                  |
 
 ## License
 
-MIT
+MIT © ObservabilityOS
