@@ -6,7 +6,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: [
+      "src/**/*.test.ts",
       "packages/sdk/src/**/*.test.ts",
+      "packages/shipper/src/**/*.test.ts",
       "packages/ai/src/**/*.test.ts",
       "packages/db/src/**/*.test.ts",
       "apps/web/src/**/*.test.ts",

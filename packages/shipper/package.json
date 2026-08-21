@@ -1,0 +1,43 @@
+{
+  "name": "@observability-os/shipper",
+  "version": "0.1.0",
+  "description": "Lightweight zero-dependency container log shipper and metrics sidecar agent for ObservabilityOS",
+  "license": "MIT",
+  "keywords": [
+    "observability",
+    "log-shipper",
+    "docker-sidecar",
+    "container-logging",
+    "metrics-collector",
+    "agent"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "obs-shipper": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "Dockerfile",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@observability-os/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.8"
+  }
+}
