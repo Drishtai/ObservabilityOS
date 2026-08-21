@@ -1,10 +1,9 @@
 import { getAuthenticatedUser } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
 import { Project } from "@repo/db";
-
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit";
+import { requireProjectPermission } from "@/lib/permissions";
 
 const settingsUpdateSchema = z.object({
   projectId: z.string().min(1, "projectId is required"),
@@ -34,21 +33,21 @@ export async function PATCH(request: Request) {
     const rawBody = await request.json();
     const validatedData = settingsUpdateSchema.parse(rawBody);
 
-    // Verify project belongs to user (Tenant isolation)
-    const project = await Project.findOne({
-      _id: validatedData.projectId,
-      ownerId: user._id,
-    });
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      validatedData.projectId,
+      "admin",
+    );
 
-    if (!project) {
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
-            code: "NOT_FOUND",
+          error: error || {
+            code: "FORBIDDEN",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 403 },
       );
     }
 

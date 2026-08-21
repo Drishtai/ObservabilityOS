@@ -1,9 +1,7 @@
 import { getAuthenticatedUser } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
-import { Project } from "@repo/db";
-
 import { z } from "zod";
+import { requireProjectPermission } from "@/lib/permissions";
 
 const savedQuerySchema = z.object({
   projectId: z.string().min(1),
@@ -28,19 +26,21 @@ export async function POST(request: Request) {
     const rawBody = await request.json();
     const validated = savedQuerySchema.parse(rawBody);
 
-    const project = await Project.findOne({
-      _id: validated.projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      validated.projectId,
+      "member",
+    );
+
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 
@@ -131,19 +131,21 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "member",
+    );
+
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 

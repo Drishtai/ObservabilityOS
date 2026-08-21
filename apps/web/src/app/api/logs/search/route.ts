@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { Project, Log } from "@repo/db";
 import { Types } from "mongoose";
 
+import { requireProjectPermission } from "@/lib/permissions";
+
 export async function GET(request: Request) {
   try {
     const user = await getAuthenticatedUser();
@@ -28,20 +30,21 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify project belongs to user (Tenant isolation)
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires viewer or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "viewer",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 

@@ -11,6 +11,11 @@ import {
   Volume2,
   RefreshCw,
   Copy,
+  Users,
+  UserPlus,
+  Trash2,
+  Crown,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +42,24 @@ interface SettingsViewProps {
     minErrorCount: number;
     zScoreThreshold: number;
   };
+}
+
+interface Member {
+  id: string;
+  userId: string;
+  username: string;
+  email: string;
+  avatarUrl: string;
+  role: "admin" | "member" | "viewer";
+  createdAt: string;
+}
+
+interface Owner {
+  userId: string;
+  username: string;
+  email: string;
+  avatarUrl: string;
+  role: "owner";
 }
 
 interface AuditLog {
@@ -140,10 +163,41 @@ export default function SettingsView({ project }: SettingsViewProps) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(true);
 
+  // Team Members State
+  const [owner, setOwner] = useState<Owner | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("viewer");
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+
+  // Invite Form State
+  const [inviteInput, setInviteInput] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "member" | "viewer">("member");
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+
+  const fetchMembers = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoadingMembers(true);
+    try {
+      const res = await fetch(`/api/projects/members?projectId=${project.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOwner(data.owner);
+        setMembers(data.members || []);
+        if (data.currentUserRole) setCurrentUserRole(data.currentUserRole);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  }, [project.id]);
+
   const [prevProjectId, setPrevProjectId] = useState(project.id);
   if (project.id !== prevProjectId) {
     setPrevProjectId(project.id);
     setIsLoadingAudit(true);
+    setIsLoadingMembers(true);
   }
 
   const fetchAuditLogs = useCallback(
@@ -171,8 +225,98 @@ export default function SettingsView({ project }: SettingsViewProps) {
   useEffect(() => {
     Promise.resolve().then(() => {
       fetchAuditLogs(false);
+      fetchMembers(false);
     });
-  }, [fetchAuditLogs]);
+  }, [fetchAuditLogs, fetchMembers]);
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteInput.trim()) return;
+    setIsInviting(true);
+    setInviteError(null);
+    setInviteSuccess(null);
+
+    try {
+      const res = await fetch("/api/projects/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          usernameOrEmail: inviteInput.trim(),
+          role: inviteRole,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setInviteSuccess(`Successfully added ${data.member.username} as ${data.member.role}!`);
+        setInviteInput("");
+        fetchMembers(false);
+        fetchAuditLogs(false);
+        setTimeout(() => setInviteSuccess(null), 4000);
+      } else {
+        setInviteError(data.error?.message || "Failed to add member");
+      }
+    } catch (err) {
+      console.error(err);
+      setInviteError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleRoleChange = async (membershipId: string, newRole: "admin" | "member" | "viewer") => {
+    try {
+      const res = await fetch("/api/projects/members", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          membershipId,
+          role: newRole,
+        }),
+      });
+
+      if (res.ok) {
+        fetchMembers(false);
+        fetchAuditLogs(false);
+      } else {
+        const data = await res.json();
+        alert(data.error?.message || "Failed to update role");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update role");
+    }
+  };
+
+  const handleRemoveMember = async (membershipId: string, memberName: string) => {
+    if (!window.confirm(`Are you sure you want to remove ${memberName} from this project?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/projects/members", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          membershipId,
+        }),
+      });
+
+      if (res.ok) {
+        fetchMembers(false);
+        fetchAuditLogs(false);
+      } else {
+        const data = await res.json();
+        alert(data.error?.message || "Failed to remove member");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to remove member");
+    }
+  };
 
   const [slackWebhookUrl, setSlackWebhookUrl] = useState(
     project.slackWebhookUrl,
@@ -494,6 +638,222 @@ export default function SettingsView({ project }: SettingsViewProps) {
           </Button>
         </div>
       </form>
+
+      {/* Team & Collaborators Management Section */}
+      <Card className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-slate-800/60">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-indigo-400" />
+            <div>
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
+                Team & Collaborators
+              </CardTitle>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => fetchMembers()}
+            className="text-slate-500 hover:text-slate-300"
+            title="Refresh members"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMembers ? "animate-spin" : ""}`} />
+          </Button>
+        </CardHeader>
+
+        <CardContent className="pt-6 space-y-6">
+          {/* Invite Form (Only for Admins and Owners) */}
+          {(currentUserRole === "owner" || currentUserRole === "admin") && (
+            <form
+              onSubmit={handleInviteMember}
+              className="bg-slate-900/50 border border-slate-800/80 rounded-xl p-4 space-y-3"
+            >
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-indigo-400" />
+                <Label className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
+                  Invite New Member
+                </Label>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Input
+                  type="text"
+                  required
+                  placeholder="Enter username or email address..."
+                  value={inviteInput}
+                  onChange={(e) => setInviteInput(e.target.value)}
+                  disabled={isInviting}
+                  className="flex-1 bg-slate-950 border-slate-800 text-xs"
+                />
+
+                <select
+                  value={inviteRole}
+                  onChange={(e) =>
+                    setInviteRole(e.target.value as "admin" | "member" | "viewer")
+                  }
+                  disabled={isInviting}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="member">Member (Manage alerts, services & incidents)</option>
+                  <option value="admin">Admin (Full project & team management)</option>
+                  <option value="viewer">Viewer (Read-only access)</option>
+                </select>
+
+                <Button
+                  type="submit"
+                  disabled={isInviting}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs shrink-0"
+                >
+                  <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                  {isInviting ? "Adding..." : "Add Member"}
+                </Button>
+              </div>
+
+              {inviteSuccess && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span>{inviteSuccess}</span>
+                </div>
+              )}
+
+              {inviteError && (
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{inviteError}</span>
+                </div>
+              )}
+            </form>
+          )}
+
+          {/* Members List Table */}
+          {isLoadingMembers ? (
+            <div className="text-center py-6 flex items-center justify-center gap-2 text-slate-500 text-xs">
+              <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+              Loading team members...
+            </div>
+          ) : (
+            <div className="border border-slate-850 rounded-lg overflow-hidden bg-slate-950/60">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-slate-850 bg-slate-900/60 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <TableHead className="w-4/12 py-2 px-4">User</TableHead>
+                    <TableHead className="w-3/12 py-2 px-4">Role</TableHead>
+                    <TableHead className="w-3/12 py-2 px-4">Permissions</TableHead>
+                    <TableHead className="w-2/12 py-2 px-4 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="text-xs">
+                  {/* Owner Row */}
+                  {owner && (
+                    <TableRow className="hover:bg-slate-900/30 transition-colors text-slate-300">
+                      <TableCell className="py-3 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-bold text-xs uppercase">
+                            {owner.username.slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                              {owner.username}
+                              <Crown className="w-3 h-3 text-amber-400" />
+                            </div>
+                            {owner.email && (
+                              <div className="text-[10px] text-slate-500">{owner.email}</div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500/30 bg-amber-500/10 text-amber-400 text-[10px] font-bold uppercase tracking-wider"
+                        >
+                          Workspace Owner
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-[11px] text-slate-400">
+                        Full access & billing ownership
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-right text-[10px] text-slate-500">
+                        Primary Owner
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {/* Collaborator Rows */}
+                  {members.map((member) => (
+                    <TableRow
+                      key={member.id}
+                      className="hover:bg-slate-900/30 transition-colors text-slate-300"
+                    >
+                      <TableCell className="py-3 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs uppercase">
+                            {member.username.slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-200">
+                              {member.username}
+                            </div>
+                            {member.email && (
+                              <div className="text-[10px] text-slate-500">{member.email}</div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 px-4">
+                        {(currentUserRole === "owner" || currentUserRole === "admin") ? (
+                          <select
+                            value={member.role}
+                            onChange={(e) =>
+                              handleRoleChange(
+                                member.id,
+                                e.target.value as "admin" | "member" | "viewer"
+                              )
+                            }
+                            className="bg-slate-900 border border-slate-750 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="admin">Admin</option>
+                            <option value="member">Member</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase tracking-wider font-mono"
+                          >
+                            {member.role}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-[11px] text-slate-400">
+                        {member.role === "admin" && "Manage settings, services & team"}
+                        {member.role === "member" && "Ingest data, manage incidents & comments"}
+                        {member.role === "viewer" && "View logs, metrics & incidents"}
+                      </TableCell>
+                      <TableCell className="py-3 px-4 text-right">
+                        {(currentUserRole === "owner" || currentUserRole === "admin") && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveMember(member.id, member.username)}
+                            className="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 h-7 w-7"
+                            title={`Remove ${member.username}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Danger Zone */}
       <Card className="border border-rose-500/20 bg-rose-500/5 relative overflow-hidden">

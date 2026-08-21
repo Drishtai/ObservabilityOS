@@ -1,10 +1,9 @@
 import { getAuthenticatedUser } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
 import { Project, Service } from "@repo/db";
-
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit";
+import { requireProjectPermission } from "@/lib/permissions";
 
 const sloConfigSchema = z.object({
   projectId: z.string().min(1),
@@ -34,20 +33,21 @@ export async function POST(request: Request) {
     const rawBody = await request.json();
     const { projectId, serviceId, slo } = sloConfigSchema.parse(rawBody);
 
-    // Verify project ownership
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires member or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "member",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 
@@ -68,31 +68,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Initialize slos if not present
     if (!service.slos) {
       service.slos = [];
     }
 
-    // Check if SLO with same name exists
-    const existingIndex = service.slos.findIndex(
-      (s) => s.name.toLowerCase() === slo.name.toLowerCase(),
-    );
+    const existingIndex = service.slos.findIndex((s) => s.name === slo.name);
+    const isUpdate = existingIndex >= 0;
 
-    const newSlo = {
-      name: slo.name,
-      type: slo.type,
-      target: slo.target,
-      windowDays: slo.windowDays,
-      latencyThresholdMs:
-        slo.type === "latency" ? slo.latencyThresholdMs : undefined,
-    };
-
-    const action = existingIndex > -1 ? "slo.update" : "slo.create";
-
-    if (existingIndex > -1) {
-      service.slos[existingIndex] = newSlo;
+    if (isUpdate) {
+      service.slos[existingIndex] = {
+        name: slo.name,
+        type: slo.type,
+        target: slo.target,
+        windowDays: slo.windowDays,
+        latencyThresholdMs: slo.latencyThresholdMs,
+      };
     } else {
-      service.slos.push(newSlo);
+      service.slos.push({
+        name: slo.name,
+        type: slo.type,
+        target: slo.target,
+        windowDays: slo.windowDays,
+        latencyThresholdMs: slo.latencyThresholdMs,
+      });
     }
 
     await service.save();
@@ -100,37 +98,43 @@ export async function POST(request: Request) {
     await logAuditEvent({
       projectId: project._id.toString(),
       userId: user._id.toString(),
-      action,
-      targetEntity: "slo",
-      targetId: slo.name,
+      action: isUpdate ? "slo.update" : "slo.create",
+      targetEntity: "service_slo",
+      targetId: `${service.name}/${slo.name}`,
       metadata: {
-        serviceId,
-        type: slo.type,
+        serviceId: service._id.toString(),
+        sloName: slo.name,
         target: slo.target,
-        windowDays: slo.windowDays,
+        type: slo.type,
       },
     });
 
-    return NextResponse.json({ success: true, slos: service.slos });
+    return NextResponse.json({
+      success: true,
+      service,
+    });
   } catch (error) {
-    console.error("SLO Config POST Error:", error);
+    console.error("SLO Configuration Error:", error);
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         {
           error: {
             code: "BAD_REQUEST",
-            message: "Validation failed",
-            details: error.errors,
+            message:
+              "Validation failed: " +
+              error.errors.map((e) => e.message).join(", "),
           },
         },
         { status: 400 },
       );
     }
+
     return NextResponse.json(
       {
         error: {
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to save SLO configuration",
+          message: "Failed to configure service SLO",
         },
       },
       { status: 500 },
@@ -165,20 +169,21 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Verify project ownership
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires admin or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "admin",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 

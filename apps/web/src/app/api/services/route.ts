@@ -1,5 +1,4 @@
 import { getAuthenticatedUser } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
 import {
   Project,
@@ -10,10 +9,10 @@ import {
   Comment,
   Metric,
 } from "@repo/db";
-
 import { logAuditEvent } from "@/lib/audit";
 import { delCache } from "@/lib/redis";
 import { PLAN_LIMITS } from "@/lib/quota";
+import { requireProjectPermission } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   try {
@@ -35,20 +34,21 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify project belongs to user
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires viewer or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "viewer",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 
@@ -103,20 +103,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify project belongs to user
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires member or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "member",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 
@@ -205,20 +206,21 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Verify project belongs to user
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires member or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "member",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 
@@ -288,20 +290,21 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Verify project belongs to user
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Verify project permissions (Requires admin or above)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "admin",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "NOT_FOUND",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 404 },
       );
     }
 

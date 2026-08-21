@@ -1,9 +1,10 @@
 import { getAuthenticatedUser } from "@/lib/auth";
 
 import { NextResponse } from "next/server";
-import { Project, Incident, Comment } from "@repo/db";
+import { Incident, Comment } from "@repo/db";
 
 import { z } from "zod";
+import { requireProjectPermission } from "@/lib/permissions";
 
 const commentCreateSchema = z.object({
   projectId: z.string().min(1, "projectId is required"),
@@ -25,20 +26,21 @@ export async function POST(request: Request) {
     const { projectId, incidentId, content } =
       commentCreateSchema.parse(rawBody);
 
-    // Tenant check: Ensure user owns this project
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Tenant check: Ensure user has at least member access to this project
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "member",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "FORBIDDEN",
-            message: "Forbidden: You do not own this project",
+            message: "Forbidden: Access denied",
           },
         },
-        { status: 403 },
+        { status: error?.status || 403 },
       );
     }
 
@@ -66,37 +68,21 @@ export async function POST(request: Request) {
       content: content.trim(),
     });
 
-    // Populate user info for the response
-    const populated = await Comment.findById(comment._id).populate(
-      "userId",
-      "username email avatarUrl",
+    return NextResponse.json(
+      {
+        comment: {
+          id: comment._id.toString(),
+          content: comment.content,
+          createdAt: comment.createdAt.toISOString(),
+          user: {
+            id: user._id.toString(),
+            username: user.username,
+            avatarUrl: user.avatarUrl || null,
+          },
+        },
+      },
+      { status: 201 },
     );
-    if (!populated) {
-      throw new Error("Failed to retrieve created comment");
-    }
-
-    const u = populated.userId as unknown as {
-      _id: { toString: () => string };
-      username: string;
-      email?: string | null;
-      avatarUrl?: string | null;
-    } | null;
-    const serializedComment = {
-      id: populated._id.toString(),
-      incidentId: populated.incidentId.toString(),
-      content: populated.content,
-      createdAt: populated.createdAt.toISOString(),
-      user: u
-        ? {
-            id: u._id.toString(),
-            username: u.username,
-            email: u.email || null,
-            avatarUrl: u.avatarUrl || null,
-          }
-        : null,
-    };
-
-    return NextResponse.json({ comment: serializedComment }, { status: 201 });
   } catch (error) {
     console.error("Comment POST Error:", error);
     if (error instanceof z.ZodError) {
@@ -149,20 +135,21 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Tenant check: Ensure user owns this project
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Tenant check: Ensure user is at least a viewer of this project
+    const { authorized, role, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "viewer",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "FORBIDDEN",
-            message: "Forbidden: You do not own this project",
+            message: "Forbidden: Access denied",
           },
         },
-        { status: 403 },
+        { status: error?.status || 403 },
       );
     }
 
@@ -192,11 +179,11 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Auth check: Only comment author OR project owner can delete comment
+    // Auth check: Only comment author OR project admin/owner can delete comment
     const isCommentAuthor = comment.userId.toString() === user._id.toString();
-    const isProjectOwner = project.ownerId.toString() === user._id.toString();
+    const isProjectAdminOrOwner = role === "admin" || role === "owner";
 
-    if (!isCommentAuthor && !isProjectOwner) {
+    if (!isCommentAuthor && !isProjectAdminOrOwner) {
       return NextResponse.json(
         {
           error: {

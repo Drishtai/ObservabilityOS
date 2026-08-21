@@ -1,10 +1,9 @@
 import { getAuthenticatedUser } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
 import { Incident, Project, Comment } from "@repo/db";
 import { generateEmbedding } from "@repo/ai";
-
 import { delCache } from "@/lib/redis";
+import { requireProjectPermission } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   try {
@@ -26,20 +25,21 @@ export async function GET(request: Request) {
       );
     }
 
-    // Tenant Check: Ensure user owns this project
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Tenant Check: Ensure user has at least viewer access
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "viewer",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
+          error: error || {
             code: "FORBIDDEN",
-            message: "Forbidden: You do not own this project",
+            message: "Forbidden: Access denied",
           },
         },
-        { status: 403 },
+        { status: error?.status || 403 },
       );
     }
 
@@ -74,7 +74,6 @@ export async function PATCH(request: Request) {
     }
 
     const { incidentId, status } = await request.json();
-
     if (
       !incidentId ||
       !status ||
@@ -97,15 +96,16 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Tenant Check: Ensure user owns the project this incident belongs to
-    const project = await Project.findOne({
-      _id: incident.projectId,
-      ownerId: user._id,
-    });
-    if (!project) {
+    // Tenant Check: Ensure user has member access to this project
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      incident.projectId,
+      "member",
+    );
+    if (!authorized || !project) {
       return NextResponse.json(
-        { error: { code: "FORBIDDEN", message: "Forbidden: Access denied" } },
-        { status: 403 },
+        { error: error || { code: "FORBIDDEN", message: "Forbidden: Access denied" } },
+        { status: error?.status || 403 },
       );
     }
 

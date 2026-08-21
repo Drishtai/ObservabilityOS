@@ -1,29 +1,71 @@
 import { NextResponse } from "next/server";
 import { connectToDatabase, User } from "@repo/db";
 import jwt from "jsonwebtoken";
+import { verifyPassword } from "@/lib/password";
 
 export async function POST(request: Request) {
   try {
     const { username, password } = await request.json();
 
-    const adminUsername = process.env.ADMIN_USERNAME;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    const jwtSecret = process.env.JWT_SECRET;
-
-    if (!adminUsername || !adminPassword || !jwtSecret) {
-      console.error("Missing auth credentials in environment variables");
+    if (!username || !password) {
       return NextResponse.json(
         {
           error: {
-            code: "CONFIGURATION_ERROR",
-            message: "Server is not configured correctly. Admin credentials missing.",
+            code: "BAD_REQUEST",
+            message: "Username and password are required",
           },
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
 
-    if (username !== adminUsername || password !== adminPassword) {
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const jwtSecret = process.env.JWT_SECRET || "default_dev_jwt_secret_change_in_production";
+
+    await connectToDatabase();
+
+    let authenticatedUser = null;
+
+    // 1. Check if matching environment Admin credentials
+    if (
+      adminUsername &&
+      adminPassword &&
+      username === adminUsername &&
+      password === adminPassword
+    ) {
+      authenticatedUser = await User.findOne({ githubId: "admin_fixed" });
+      if (!authenticatedUser) {
+        authenticatedUser = await User.create({
+          githubId: "admin_fixed",
+          username: adminUsername,
+          email: "admin@maxfate.com",
+          avatarUrl: "",
+          role: "admin",
+        });
+      } else if (authenticatedUser.username !== adminUsername) {
+        authenticatedUser.username = adminUsername;
+        await authenticatedUser.save();
+      }
+    } else {
+      // 2. Check Database users by username or email
+      const normalizedIdentifier = username.trim().toLowerCase();
+      const user = await User.findOne({
+        $or: [
+          { username: normalizedIdentifier },
+          { email: normalizedIdentifier },
+        ],
+      });
+
+      if (user && user.passwordHash) {
+        const isValid = await verifyPassword(password, user.passwordHash);
+        if (isValid) {
+          authenticatedUser = user;
+        }
+      }
+    }
+
+    if (!authenticatedUser) {
       return NextResponse.json(
         {
           error: {
@@ -35,31 +77,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Connect to database and find or create the single static Admin user
-    await connectToDatabase();
-
-    let user = await User.findOne({ githubId: "admin_fixed" });
-    if (!user) {
-      user = await User.create({
-        githubId: "admin_fixed",
-        username: adminUsername,
-        email: "admin@maxfate.com",
-        avatarUrl: "",
-      });
-    } else if (user.username !== adminUsername) {
-      // Sync DB username if env variable changed
-      user.username = adminUsername;
-      await user.save();
-    }
-
     // Generate Session JWT
     const sessionToken = jwt.sign(
-      { userId: user._id.toString(), username: user.username },
+      { userId: authenticatedUser._id.toString(), username: authenticatedUser.username },
       jwtSecret,
       { expiresIn: "7d" }
     );
 
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({
+      success: true,
+      user: {
+        id: authenticatedUser._id.toString(),
+        username: authenticatedUser.username,
+        email: authenticatedUser.email,
+      },
+    });
+
     response.cookies.set("session", sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

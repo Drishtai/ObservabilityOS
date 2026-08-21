@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import jwt from "jsonwebtoken";
 import { connectToDatabase, User, Project } from "@repo/db";
+import { getUserAccessibleProjectIds } from "@/lib/permissions";
 
 export const getAuthSession = cache(async () => {
   const cookieStore = await cookies();
@@ -30,15 +31,19 @@ export const getAuthSession = cache(async () => {
     redirect("/api/auth/logout");
   }
 
+  const accessibleProjectIds = await getUserAccessibleProjectIds(user._id);
+
   const isSelfHosted = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
   if (isSelfHosted) {
     await Project.updateMany(
-      { ownerId: user._id, plan: { $ne: "self-host" } },
+      { _id: { $in: accessibleProjectIds }, plan: { $ne: "self-host" } },
       { $set: { plan: "self-host" } }
     );
   }
 
-  const projects = await Project.find({ ownerId: user._id }).sort({
+  const projects = await Project.find({
+    _id: { $in: accessibleProjectIds },
+  }).sort({
     createdAt: -1,
   });
 

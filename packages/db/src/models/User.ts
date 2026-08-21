@@ -2,10 +2,12 @@ import { Schema, model, models, Document, Types, Model } from "mongoose";
 
 export interface IUser {
   _id: Types.ObjectId;
-  githubId: string;
+  githubId?: string;
   username: string;
   email?: string;
+  passwordHash?: string;
   avatarUrl?: string;
+  role?: "admin" | "user";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -14,10 +16,12 @@ export type UserDocument = IUser & Document;
 
 const UserSchema = new Schema<IUser>(
   {
-    githubId: { type: String, required: true, unique: true, index: true },
-    username: { type: String, required: true },
-    email: { type: String },
+    githubId: { type: String, unique: true, sparse: true, index: true },
+    username: { type: String, required: true, unique: true, index: true },
+    email: { type: String, index: true },
+    passwordHash: { type: String },
     avatarUrl: { type: String },
+    role: { type: String, enum: ["admin", "user"], default: "user" },
   },
   { timestamps: true },
 );

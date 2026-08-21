@@ -5,6 +5,8 @@ import { generateApiKey, hashApiKey } from "@/lib/crypto";
 import { logAuditEvent } from "@/lib/audit";
 import { delCache } from "@/lib/redis";
 
+import { requireProjectPermission } from "@/lib/permissions";
+
 export async function POST(request: Request) {
   try {
     const user = await getAuthenticatedUser();
@@ -23,21 +25,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify project belongs to user (Tenant isolation)
-    const project = await Project.findOne({
-      _id: projectId,
-      ownerId: user._id,
-    });
+    // Verify project permissions (Requires admin or owner)
+    const { authorized, project, error } = await requireProjectPermission(
+      user._id,
+      projectId,
+      "admin",
+    );
 
-    if (!project) {
+    if (!authorized || !project) {
       return NextResponse.json(
         {
-          error: {
-            code: "NOT_FOUND",
+          error: error || {
+            code: "FORBIDDEN",
             message: "Project not found or access denied",
           },
         },
-        { status: 404 },
+        { status: error?.status || 403 },
       );
     }
 

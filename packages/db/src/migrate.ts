@@ -6,10 +6,12 @@ import path from "path";
 
 function loadEnv() {
   const possiblePaths = [
-    path.resolve(__dirname, "../../../apps/web/.env"), // from packages/db/dist
-    path.resolve(__dirname, "../../apps/web/.env"), // from packages/db/src
-    path.resolve(process.cwd(), ".env"), // current working directory
-    path.resolve(process.cwd(), "apps/web/.env"), // apps/web under cwd
+    path.resolve(__dirname, "../../.env"), // from packages/db/dist to root
+    path.resolve(__dirname, "../../../.env"),
+    path.resolve(__dirname, "../../../apps/web/.env"),
+    path.resolve(__dirname, "../../apps/web/.env"),
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "apps/web/.env"),
   ];
 
   for (const envPath of possiblePaths) {
@@ -55,6 +57,25 @@ const MIGRATIONS = [
       const { Project } = await import("./models/Project.js");
       await Project.ensureIndexes();
       console.log("002_create_project_api_key_indexes index checks completed.");
+    },
+  },
+  {
+    name: "003_update_user_schema_indexes",
+    up: async () => {
+      console.log("Applying 003_update_user_schema_indexes...");
+      const { User } = await import("./models/User.js");
+      try {
+        const indexes = await User.collection.indexes();
+        const hasGithubIdIndex = indexes.some((idx) => idx.name === "githubId_1");
+        if (hasGithubIdIndex) {
+          console.log("Dropping existing non-sparse githubId_1 index...");
+          await User.collection.dropIndex("githubId_1");
+        }
+      } catch (err) {
+        console.warn("Index drop check info:", err);
+      }
+      await User.ensureIndexes();
+      console.log("003_update_user_schema_indexes completed.");
     },
   },
 ];
