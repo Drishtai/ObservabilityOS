@@ -238,7 +238,12 @@ async function executeMultiLevelAiFallback(
         (aiConfig?.provider === "anthropic" ? aiConfig?.apiKey : undefined) ||
         process.env.ANTHROPIC_API_KEY;
 
-      if (key && anthropicBreaker.canExecute()) {
+      if (!key) {
+        // Fast skip - No key set for Anthropic Claude
+        continue;
+      }
+
+      if (anthropicBreaker.canExecute()) {
         const model =
           aiConfig?.anthropicModel ||
           (aiConfig?.provider === "anthropic" ? aiConfig?.model : undefined) ||
@@ -299,7 +304,12 @@ async function executeMultiLevelAiFallback(
         (aiConfig?.provider === "openai" ? aiConfig?.apiKey : undefined) ||
         process.env.OPENAI_API_KEY;
 
-      if (key && openaiBreaker.canExecute()) {
+      if (!key) {
+        // Fast skip - No key set for OpenAI
+        continue;
+      }
+
+      if (openaiBreaker.canExecute()) {
         const model =
           aiConfig?.openaiModel ||
           (aiConfig?.provider === "openai" ? aiConfig?.model : undefined) ||
@@ -365,7 +375,12 @@ async function executeMultiLevelAiFallback(
         (aiConfig?.provider === "aicredits" ? aiConfig?.apiKey : undefined) ||
         process.env.AICREDITS_API_KEY;
 
-      if (key && aicreditsBreaker.canExecute()) {
+      if (!key) {
+        // Fast skip - No key set for AICredits Gateway
+        continue;
+      }
+
+      if (aicreditsBreaker.canExecute()) {
         const gatewayModels = [
           aiConfig?.aicreditsModel,
           process.env.AICREDITS_MODEL,
@@ -427,17 +442,22 @@ async function executeMultiLevelAiFallback(
         "";
       const rawUrl =
         aiConfig?.customAiBaseUrl ||
-        (aiConfig?.provider === "custom" ? aiConfig?.baseUrl : undefined) ||
-        "https://api.groq.com/openai/v1";
+        (aiConfig?.provider === "custom" ? aiConfig?.baseUrl : undefined);
 
-      if ((key || rawUrl) && customBreaker.canExecute()) {
+      if (!key && !rawUrl) {
+        // Fast skip - No custom API key or URL configured
+        continue;
+      }
+
+      if (customBreaker.canExecute()) {
         const model =
           aiConfig?.customAiModel ||
           (aiConfig?.provider === "custom" ? aiConfig?.model : undefined) ||
           "llama-3.3-70b-versatile";
-        const url = rawUrl.endsWith("/chat/completions")
-          ? rawUrl
-          : `${rawUrl.replace(/\/+$/, "")}/chat/completions`;
+        const targetUrl = rawUrl || "https://api.groq.com/openai/v1";
+        const url = targetUrl.endsWith("/chat/completions")
+          ? targetUrl
+          : `${targetUrl.replace(/\/+$/, "")}/chat/completions`;
 
         const headers: Record<string, string> = {
           "content-type": "application/json",
@@ -518,29 +538,28 @@ export async function generateIncidentAnalysis(
     return generateMockAnalysis(input);
   }
 
-  const prompt = generateIncidentPrompt(input);
-
+  // Fast check: If no provider keys are set in project or environment, return mock analysis immediately without cooldown or network delay
   const hasAnyKey =
-    !!input.aiConfig?.anthropicApiKey ||
-    !!input.aiConfig?.openaiApiKey ||
-    !!input.aiConfig?.aicreditsApiKey ||
-    !!input.aiConfig?.customAiApiKey ||
-    !!input.aiConfig?.apiKey ||
-    !!process.env.AICREDITS_API_KEY ||
-    !!process.env.ANTHROPIC_API_KEY ||
-    !!process.env.OPENAI_API_KEY;
+    !!(input.aiConfig?.anthropicApiKey || (input.aiConfig?.provider === "anthropic" && input.aiConfig?.apiKey) || process.env.ANTHROPIC_API_KEY) ||
+    !!(input.aiConfig?.openaiApiKey || (input.aiConfig?.provider === "openai" && input.aiConfig?.apiKey) || process.env.OPENAI_API_KEY) ||
+    !!(input.aiConfig?.aicreditsApiKey || (input.aiConfig?.provider === "aicredits" && input.aiConfig?.apiKey) || process.env.AICREDITS_API_KEY) ||
+    !!(input.aiConfig?.customAiApiKey || (input.aiConfig?.provider === "custom" && input.aiConfig?.apiKey) || input.aiConfig?.customAiBaseUrl || (input.aiConfig?.provider === "custom" && input.aiConfig?.baseUrl));
 
-  if (hasAnyKey) {
-    try {
-      enforceCooldown();
-    } catch (cooldownErr) {
-      console.warn(
-        "[ObservabilityOS AI] Cooldown active, falling back to mock analysis:",
-        cooldownErr,
-      );
-      return generateMockAnalysis(input);
-    }
+  if (!hasAnyKey) {
+    return generateMockAnalysis(input);
   }
+
+  try {
+    enforceCooldown();
+  } catch (cooldownErr) {
+    console.warn(
+      "[ObservabilityOS AI] Cooldown active, falling back to mock analysis:",
+      cooldownErr,
+    );
+    return generateMockAnalysis(input);
+  }
+
+  const prompt = generateIncidentPrompt(input);
 
   // Execute full multi-level fallback chain
   const resultText = await executeMultiLevelAiFallback(
@@ -763,29 +782,27 @@ export async function generateEmailDigestSummary(
     return generateMockEmailDigestSummary(input);
   }
 
-  const prompt = generateDigestPrompt(input);
-
   const hasAnyKey =
-    !!input.aiConfig?.anthropicApiKey ||
-    !!input.aiConfig?.openaiApiKey ||
-    !!input.aiConfig?.aicreditsApiKey ||
-    !!input.aiConfig?.customAiApiKey ||
-    !!input.aiConfig?.apiKey ||
-    !!process.env.AICREDITS_API_KEY ||
-    !!process.env.ANTHROPIC_API_KEY ||
-    !!process.env.OPENAI_API_KEY;
+    !!(input.aiConfig?.anthropicApiKey || (input.aiConfig?.provider === "anthropic" && input.aiConfig?.apiKey) || process.env.ANTHROPIC_API_KEY) ||
+    !!(input.aiConfig?.openaiApiKey || (input.aiConfig?.provider === "openai" && input.aiConfig?.apiKey) || process.env.OPENAI_API_KEY) ||
+    !!(input.aiConfig?.aicreditsApiKey || (input.aiConfig?.provider === "aicredits" && input.aiConfig?.apiKey) || process.env.AICREDITS_API_KEY) ||
+    !!(input.aiConfig?.customAiApiKey || (input.aiConfig?.provider === "custom" && input.aiConfig?.apiKey) || input.aiConfig?.customAiBaseUrl || (input.aiConfig?.provider === "custom" && input.aiConfig?.baseUrl));
 
-  if (hasAnyKey) {
-    try {
-      enforceCooldown();
-    } catch (cooldownErr) {
-      console.warn(
-        "[ObservabilityOS AI] Cooldown active, falling back to mock summary:",
-        cooldownErr,
-      );
-      return generateMockEmailDigestSummary(input);
-    }
+  if (!hasAnyKey) {
+    return generateMockEmailDigestSummary(input);
   }
+
+  try {
+    enforceCooldown();
+  } catch (cooldownErr) {
+    console.warn(
+      "[ObservabilityOS AI] Cooldown active, falling back to mock summary:",
+      cooldownErr,
+    );
+    return generateMockEmailDigestSummary(input);
+  }
+
+  const prompt = generateDigestPrompt(input);
 
   const resultText = await executeMultiLevelAiFallback(
     prompt,
