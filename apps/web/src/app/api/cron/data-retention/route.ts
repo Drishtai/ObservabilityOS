@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectToDatabase, Project, Log, Metric } from "@repo/db";
+import { connectToDatabase, Project, Log, Metric, Span } from "@repo/db";
 import { PLAN_LIMITS } from "@/lib/quota";
 
 export async function GET(request: Request) {
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
         Date.now() - retentionDays * 24 * 60 * 60 * 1000,
       );
 
-      // Delete logs and metrics older than the threshold
+      // Delete logs, metrics, and spans older than the threshold
       const deletedLogs = await Log.deleteMany({
         projectId: project._id,
         timestamp: { $lt: thresholdDate },
@@ -66,6 +66,11 @@ export async function GET(request: Request) {
         timestamp: { $lt: thresholdDate },
       });
 
+      const deletedSpans = await Span.deleteMany({
+        projectId: project._id,
+        startTime: { $lt: thresholdDate },
+      });
+
       results.push({
         projectId: project._id.toString(),
         projectName: project.name,
@@ -74,6 +79,7 @@ export async function GET(request: Request) {
         thresholdDate: thresholdDate.toISOString(),
         deletedLogsCount: deletedLogs.deletedCount,
         deletedMetricsCount: deletedMetrics.deletedCount,
+        deletedSpansCount: deletedSpans.deletedCount,
       });
     }
 

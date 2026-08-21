@@ -27,3 +27,9 @@ export {
   type IAuditLog,
   type AuditLogDocument,
 } from "./models/AuditLog";
+export {
+  Span,
+  type ISpan,
+  type ISpanEvent,
+  type SpanDocument,
+} from "./models/Span";

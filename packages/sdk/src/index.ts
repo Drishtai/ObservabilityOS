@@ -1,18 +1,54 @@
+import { scrubText, scrubObject } from "./scrubber";
+import {
+  MetricsCollector,
+  MetricOptions,
+  MetricsCollectorConfig,
+  QueuedMetric,
+} from "./metrics";
+import {
+  Tracer,
+  Span,
+  SpanOptions,
+  SpanEvent,
+  QueuedSpan,
+  TracerConfig,
+} from "./tracer";
+
+export {
+  scrubText,
+  scrubObject,
+  MetricsCollector,
+  Tracer,
+  Span,
+  type MetricOptions,
+  type MetricsCollectorConfig,
+  type QueuedMetric,
+  type SpanOptions,
+  type SpanEvent,
+  type QueuedSpan,
+  type TracerConfig,
+};
+
 export interface LogOptions {
   service?: string;
   environment?: "prod" | "staging" | "dev";
-  timestamp?: Date;
+  timestamp?: Date | string;
   traceId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LoggerConfig {
   apiKey: string;
   endpoint?: string;
+  metricsEndpoint?: string;
+  tracesEndpoint?: string;
   defaultService: string;
   defaultEnvironment?: "prod" | "staging" | "dev";
   batchSize?: number;
   flushIntervalMs?: number;
+  enableMetrics?: boolean;
+  metricsAutoSampleIntervalMs?: number;
+  enableTracing?: boolean;
 }
 
 interface QueuedLog {
@@ -21,7 +57,7 @@ interface QueuedLog {
   timestamp: string;
   level: "error" | "warn" | "info" | "debug";
   message: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   traceId?: string;
 }
 
@@ -32,8 +68,9 @@ export class Logger {
   private defaultEnvironment: "prod" | "staging" | "dev";
   private batchSize: number;
   private queue: QueuedLog[] = [];
-  private flushTimer: NodeJS.Timeout | null = null;
-  private isFlushing = false;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private metricsCollector: MetricsCollector | null = null;
+  private tracer: Tracer | null = null;
 
   private activeFlushPromise: Promise<void> | null = null;
 
@@ -44,6 +81,29 @@ export class Logger {
     this.defaultEnvironment = config.defaultEnvironment || "dev";
     this.batchSize = config.batchSize ?? 20;
 
+    if (config.enableTracing) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint:
+          config.tracesEndpoint ||
+          this.endpoint.replace(/\/api\/ingest\/?$/, "/api/traces/ingest"),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+
+    if (config.enableMetrics) {
+      this.metricsCollector = new MetricsCollector({
+        apiKey: this.apiKey,
+        endpoint:
+          config.metricsEndpoint ||
+          this.endpoint.replace(/\/api\/ingest\/?$/, "/api/metrics/ingest"),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+        autoSampleIntervalMs: config.metricsAutoSampleIntervalMs ?? 10000,
+      });
+    }
+
     const flushIntervalMs = config.flushIntervalMs ?? 1000;
     if (flushIntervalMs > 0) {
       this.flushTimer = setInterval(() => {
@@ -52,8 +112,13 @@ export class Logger {
         });
       }, flushIntervalMs);
       // Prevent keeping the node process alive just for the timer
-      if (this.flushTimer && typeof this.flushTimer.unref === "function") {
-        this.flushTimer.unref();
+      if (
+        this.flushTimer &&
+        typeof this.flushTimer === "object" &&
+        "unref" in this.flushTimer &&
+        typeof (this.flushTimer as { unref?: () => void }).unref === "function"
+      ) {
+        (this.flushTimer as { unref: () => void }).unref();
       }
     }
   }
@@ -66,13 +131,21 @@ export class Logger {
     message: string,
     options?: LogOptions,
   ): void {
+    const formattedTimestamp = options?.timestamp
+      ? options.timestamp instanceof Date
+        ? options.timestamp.toISOString()
+        : String(options.timestamp)
+      : new Date().toISOString();
+
     const logEntry: QueuedLog = {
       service: options?.service || this.defaultService,
       environment: options?.environment || this.defaultEnvironment,
-      timestamp: (options?.timestamp || new Date()).toISOString(),
+      timestamp: formattedTimestamp,
       level,
-      message,
-      metadata: options?.metadata,
+      message: scrubText(message),
+      metadata: options?.metadata
+        ? (scrubObject(options.metadata) as Record<string, unknown>)
+        : undefined,
       traceId: options?.traceId,
     };
 
@@ -102,9 +175,126 @@ export class Logger {
   }
 
   /**
-   * Flush all currently queued logs to the Ingestion API.
+   * Get the underlying MetricsCollector instance (if initialized).
+   */
+  public getMetricsCollector(): MetricsCollector | null {
+    return this.metricsCollector;
+  }
+
+  /**
+   * Record a system/application metric (CPU, memory, latency).
+   */
+  public recordMetric(metric: MetricOptions): void {
+    if (!this.metricsCollector) {
+      this.metricsCollector = new MetricsCollector({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/metrics/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    this.metricsCollector.recordMetric(metric);
+  }
+
+  /**
+   * Record a latency timing in milliseconds.
+   */
+  public recordLatency(durationMs: number): void {
+    if (!this.metricsCollector) {
+      this.metricsCollector = new MetricsCollector({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/metrics/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    this.metricsCollector.recordLatency(durationMs);
+  }
+
+  /**
+   * Helper to execute a function and measure its latency automatically.
+   */
+  public async trackLatency<T>(fn: () => Promise<T> | T): Promise<T> {
+    const start = Date.now();
+    try {
+      return await fn();
+    } finally {
+      this.recordLatency(Date.now() - start);
+    }
+  }
+
+  /**
+   * Get the underlying Tracer instance (if initialized).
+   */
+  public getTracer(): Tracer | null {
+    return this.tracer;
+  }
+
+  /**
+   * Start a new distributed trace span.
+   */
+  public startSpan(name: string, options?: SpanOptions): Span {
+    if (!this.tracer) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/traces/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    return this.tracer.startSpan(name, options);
+  }
+
+  /**
+   * Execute an operation wrapped inside a distributed trace span automatically.
+   */
+  public async withSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T> | T,
+    options?: SpanOptions,
+  ): Promise<T> {
+    if (!this.tracer) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/traces/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    return this.tracer.withSpan(name, fn, options);
+  }
+
+  /**
+   * Flush all currently queued logs, metrics, and trace spans to the Ingestion APIs.
    */
   public async flush(): Promise<void> {
+    if (this.metricsCollector) {
+      await this.metricsCollector.flush().catch((err) => {
+        console.error(
+          "[ObservabilityOS SDK] Failed to flush metrics collector:",
+          err,
+        );
+      });
+    }
+
+    if (this.tracer) {
+      await this.tracer.flush().catch((err) => {
+        console.error("[ObservabilityOS SDK] Failed to flush tracer:", err);
+      });
+    }
+
     if (this.activeFlushPromise) {
       await this.activeFlushPromise;
       if (this.queue.length > 0) {
@@ -168,6 +358,14 @@ export class Logger {
    * Cleanup timer resources when the logger is no longer needed.
    */
   public destroy(): void {
+    if (this.metricsCollector) {
+      this.metricsCollector.destroy();
+      this.metricsCollector = null;
+    }
+    if (this.tracer) {
+      this.tracer.destroy();
+      this.tracer = null;
+    }
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
