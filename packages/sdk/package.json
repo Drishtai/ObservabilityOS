@@ -1,6 +1,6 @@
 {
   "name": "@observability-os/sdk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "keywords": [
     "observability",
@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
+    "@types/node": "^20.0.0",
     "typescript": "5.9.2"
   }
 }

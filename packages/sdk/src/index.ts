@@ -1,9 +1,13 @@
+import { scrubText, scrubObject } from "./scrubber";
+
+export { scrubText, scrubObject };
+
 export interface LogOptions {
   service?: string;
   environment?: "prod" | "staging" | "dev";
   timestamp?: Date;
   traceId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LoggerConfig {
@@ -21,7 +25,7 @@ interface QueuedLog {
   timestamp: string;
   level: "error" | "warn" | "info" | "debug";
   message: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   traceId?: string;
 }
 
@@ -32,8 +36,7 @@ export class Logger {
   private defaultEnvironment: "prod" | "staging" | "dev";
   private batchSize: number;
   private queue: QueuedLog[] = [];
-  private flushTimer: NodeJS.Timeout | null = null;
-  private isFlushing = false;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   private activeFlushPromise: Promise<void> | null = null;
 
@@ -52,8 +55,13 @@ export class Logger {
         });
       }, flushIntervalMs);
       // Prevent keeping the node process alive just for the timer
-      if (this.flushTimer && typeof this.flushTimer.unref === "function") {
-        this.flushTimer.unref();
+      if (
+        this.flushTimer &&
+        typeof this.flushTimer === "object" &&
+        "unref" in this.flushTimer &&
+        typeof (this.flushTimer as { unref?: () => void }).unref === "function"
+      ) {
+        (this.flushTimer as { unref: () => void }).unref();
       }
     }
   }
@@ -71,8 +79,10 @@ export class Logger {
       environment: options?.environment || this.defaultEnvironment,
       timestamp: (options?.timestamp || new Date()).toISOString(),
       level,
-      message,
-      metadata: options?.metadata,
+      message: scrubText(message),
+      metadata: options?.metadata
+        ? (scrubObject(options.metadata) as Record<string, unknown>)
+        : undefined,
       traceId: options?.traceId,
     };
 
