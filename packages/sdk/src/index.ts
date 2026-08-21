@@ -12,6 +12,10 @@ import {
   SpanEvent,
   QueuedSpan,
   TracerConfig,
+  generateTraceId,
+  generateSpanId,
+  parseTraceparent,
+  createTraceparent,
 } from "./tracer";
 
 export {
@@ -20,6 +24,10 @@ export {
   MetricsCollector,
   Tracer,
   Span,
+  generateTraceId,
+  generateSpanId,
+  parseTraceparent,
+  createTraceparent,
   type MetricOptions,
   type MetricsCollectorConfig,
   type QueuedMetric,
@@ -28,6 +36,13 @@ export {
   type QueuedSpan,
   type TracerConfig,
 };
+
+function resolveSubEndpoint(base: string, path: string): string {
+  if (base.includes("/api/ingest")) {
+    return base.replace(/\/api\/ingest\/?$/, path);
+  }
+  return `${base.replace(/\/+$/, "")}${path}`;
+}
 
 export interface LogOptions {
   service?: string;
@@ -81,12 +96,13 @@ export class Logger {
     this.defaultEnvironment = config.defaultEnvironment || "dev";
     this.batchSize = config.batchSize ?? 20;
 
-    if (config.enableTracing) {
+    const shouldEnableTracing = config.enableTracing !== false;
+    if (shouldEnableTracing) {
       this.tracer = new Tracer({
         apiKey: this.apiKey,
         endpoint:
           config.tracesEndpoint ||
-          this.endpoint.replace(/\/api\/ingest\/?$/, "/api/traces/ingest"),
+          resolveSubEndpoint(this.endpoint, "/api/traces/ingest"),
         defaultService: this.defaultService,
         defaultEnvironment: this.defaultEnvironment,
       });
@@ -97,7 +113,7 @@ export class Logger {
         apiKey: this.apiKey,
         endpoint:
           config.metricsEndpoint ||
-          this.endpoint.replace(/\/api\/ingest\/?$/, "/api/metrics/ingest"),
+          resolveSubEndpoint(this.endpoint, "/api/metrics/ingest"),
         defaultService: this.defaultService,
         defaultEnvironment: this.defaultEnvironment,
         autoSampleIntervalMs: config.metricsAutoSampleIntervalMs ?? 10000,

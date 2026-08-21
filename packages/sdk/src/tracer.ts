@@ -40,6 +40,38 @@ export interface TracerConfig {
   flushIntervalMs?: number;
 }
 
+export function generateTraceId(): string {
+  return generateId(16);
+}
+
+export function generateSpanId(): string {
+  return generateId(8);
+}
+
+export function parseTraceparent(
+  header?: string | null,
+): { traceId: string; parentSpanId: string } | null {
+  if (!header || typeof header !== "string") return null;
+  const parts = header.trim().split("-");
+  if (parts.length >= 3 && parts[1] && parts[2]) {
+    return {
+      traceId: parts[1],
+      parentSpanId: parts[2],
+    };
+  }
+  return null;
+}
+
+export function createTraceparent(traceId: string, spanId: string): string {
+  const cleanTrace = (traceId || generateTraceId())
+    .padStart(32, "0")
+    .slice(0, 32);
+  const cleanSpan = (spanId || generateSpanId())
+    .padStart(16, "0")
+    .slice(0, 16);
+  return `00-${cleanTrace}-${cleanSpan}-01`;
+}
+
 function generateId(bytes = 8): string {
   let result = "";
   const hexChars = "0123456789abcdef";
