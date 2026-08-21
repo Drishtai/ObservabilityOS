@@ -1182,10 +1182,26 @@ export default function SettingsView({ project }: SettingsViewProps) {
                   {/* Tab Navigation */}
                   <div className="flex flex-wrap gap-1 p-1 bg-slate-950/80 border border-slate-800 rounded-lg">
                     {[
-                      { id: "anthropic", label: "Anthropic Claude" },
-                      { id: "openai", label: "OpenAI GPT" },
-                      { id: "aicredits", label: "AICredits Gateway" },
-                      { id: "custom", label: "Custom / Groq / Ollama" },
+                      {
+                        id: "anthropic",
+                        label: "Anthropic Claude",
+                        hasKey: !!anthropicApiKey,
+                      },
+                      {
+                        id: "openai",
+                        label: "OpenAI GPT",
+                        hasKey: !!openaiApiKey,
+                      },
+                      {
+                        id: "aicredits",
+                        label: "AICredits Gateway",
+                        hasKey: !!aicreditsApiKey,
+                      },
+                      {
+                        id: "custom",
+                        label: "Custom / Groq / Ollama",
+                        hasKey: !!customAiApiKey || !!customAiBaseUrl,
+                      },
                     ].map((tab) => (
                       <button
                         key={tab.id}
@@ -1195,13 +1211,19 @@ export default function SettingsView({ project }: SettingsViewProps) {
                             tab.id as "anthropic" | "openai" | "aicredits" | "custom",
                           )
                         }
-                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
                           activeAiTab === tab.id
                             ? "bg-indigo-600 text-white shadow-xs"
                             : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
                         }`}
                       >
                         {tab.label}
+                        {tab.hasKey && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"
+                            title="Custom Key Set"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
