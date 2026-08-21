@@ -36,6 +36,14 @@ interface SettingsViewProps {
     slackWebhookUrl: string;
     discordWebhookUrl: string;
     teamsWebhookUrl: string;
+    pagerdutyRoutingKey?: string;
+    opsgenieApiKey?: string;
+    opsgenieRegion?: "us" | "eu";
+    jiraHost?: string;
+    jiraEmail?: string;
+    jiraApiToken?: string;
+    jiraProjectKey?: string;
+    jiraIssueType?: string;
     minErrorCount: number;
     zScoreThreshold: number;
   };
@@ -177,6 +185,24 @@ export default function SettingsView({ project }: SettingsViewProps) {
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState(
     project.teamsWebhookUrl || "",
   );
+  const [pagerdutyRoutingKey, setPagerdutyRoutingKey] = useState(
+    project.pagerdutyRoutingKey || "",
+  );
+  const [opsgenieApiKey, setOpsgenieApiKey] = useState(
+    project.opsgenieApiKey || "",
+  );
+  const [opsgenieRegion, setOpsgenieRegion] = useState<"us" | "eu">(
+    project.opsgenieRegion || "us",
+  );
+  const [jiraHost, setJiraHost] = useState(project.jiraHost || "");
+  const [jiraEmail, setJiraEmail] = useState(project.jiraEmail || "");
+  const [jiraApiToken, setJiraApiToken] = useState(project.jiraApiToken || "");
+  const [jiraProjectKey, setJiraProjectKey] = useState(
+    project.jiraProjectKey || "",
+  );
+  const [jiraIssueType, setJiraIssueType] = useState(
+    project.jiraIssueType || "Bug",
+  );
   const [minErrorCount, setMinErrorCount] = useState(project.minErrorCount);
   const [zScoreThreshold, setZScoreThreshold] = useState(
     project.zScoreThreshold,
@@ -204,6 +230,14 @@ export default function SettingsView({ project }: SettingsViewProps) {
           slackWebhookUrl: slackWebhookUrl.trim(),
           discordWebhookUrl: discordWebhookUrl.trim(),
           teamsWebhookUrl: teamsWebhookUrl.trim(),
+          pagerdutyRoutingKey: pagerdutyRoutingKey.trim(),
+          opsgenieApiKey: opsgenieApiKey.trim(),
+          opsgenieRegion,
+          jiraHost: jiraHost.trim(),
+          jiraEmail: jiraEmail.trim(),
+          jiraApiToken: jiraApiToken.trim(),
+          jiraProjectKey: jiraProjectKey.trim(),
+          jiraIssueType: jiraIssueType.trim(),
           minErrorCount: Number(minErrorCount),
           zScoreThreshold: Number(zScoreThreshold),
         }),
@@ -401,6 +435,184 @@ export default function SettingsView({ project }: SettingsViewProps) {
               <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
                 Pushes Office 365 Connector cards to Microsoft Teams channel on
                 alerts.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SRE On-Call & Issue Tracking Integrations */}
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+          <CardHeader>
+            <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-indigo-400" />
+              SRE On-Call & Issue Tracking (PagerDuty, Opsgenie, Jira)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6 max-w-2xl">
+            {/* PagerDuty */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  PagerDuty (Events API v2)
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  On-Call Routing
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pagerdutyKey" className="text-xs">
+                  Routing / Integration Key
+                </Label>
+                <Input
+                  id="pagerdutyKey"
+                  type="password"
+                  value={pagerdutyRoutingKey}
+                  onChange={(e) => setPagerdutyRoutingKey(e.target.value)}
+                  placeholder="e.g. 0123456789abcdef0123456789abcdef"
+                  className="font-mono placeholder:text-slate-700 text-xs"
+                />
+                <p className="text-[10px] text-slate-500">
+                  Automatically triggers high-urgency PagerDuty incidents and
+                  resolves them when SLO recovers.
+                </p>
+              </div>
+            </div>
+
+            {/* Opsgenie */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  Atlassian Opsgenie
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  Incident Alerting
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="opsgenieKey" className="text-xs">
+                    Opsgenie API Key
+                  </Label>
+                  <Input
+                    id="opsgenieKey"
+                    type="password"
+                    value={opsgenieApiKey}
+                    onChange={(e) => setOpsgenieApiKey(e.target.value)}
+                    placeholder="e.g. eb9197c3-xxxx-xxxx-xxxx"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="opsgenieRegion" className="text-xs">
+                    Region
+                  </Label>
+                  <select
+                    id="opsgenieRegion"
+                    value={opsgenieRegion}
+                    onChange={(e) =>
+                      setOpsgenieRegion(e.target.value as "us" | "eu")
+                    }
+                    className="w-full h-9 rounded-md border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="us">US (api.opsgenie.com)</option>
+                    <option value="eu">EU (api.eu.opsgenie.com)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Jira */}
+            <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-xs text-slate-200">
+                  Jira Software Cloud
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] text-indigo-400 border-indigo-500/20"
+                >
+                  Auto-Create Tickets
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraHost" className="text-xs">
+                    Jira Host URL
+                  </Label>
+                  <Input
+                    id="jiraHost"
+                    type="url"
+                    value={jiraHost}
+                    onChange={(e) => setJiraHost(e.target.value)}
+                    placeholder="https://yourcompany.atlassian.net"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraEmail" className="text-xs">
+                    Atlassian Account Email
+                  </Label>
+                  <Input
+                    id="jiraEmail"
+                    type="email"
+                    value={jiraEmail}
+                    onChange={(e) => setJiraEmail(e.target.value)}
+                    placeholder="sre-bot@company.com"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="jiraApiToken" className="text-xs">
+                    Jira API Token
+                  </Label>
+                  <Input
+                    id="jiraApiToken"
+                    type="password"
+                    value={jiraApiToken}
+                    onChange={(e) => setJiraApiToken(e.target.value)}
+                    placeholder="Atlassian API token"
+                    className="font-mono placeholder:text-slate-700 text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="jiraProjectKey" className="text-xs">
+                      Project Key
+                    </Label>
+                    <Input
+                      id="jiraProjectKey"
+                      type="text"
+                      value={jiraProjectKey}
+                      onChange={(e) => setJiraProjectKey(e.target.value)}
+                      placeholder="e.g. SRE"
+                      className="font-mono placeholder:text-slate-700 text-xs uppercase"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="jiraIssueType" className="text-xs">
+                      Issue Type
+                    </Label>
+                    <Input
+                      id="jiraIssueType"
+                      type="text"
+                      value={jiraIssueType}
+                      onChange={(e) => setJiraIssueType(e.target.value)}
+                      placeholder="Bug"
+                      className="font-mono placeholder:text-slate-700 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Automatically opens a Jira ticket when an AI-detected incident
+                or critical SLO breach occurs.
               </p>
             </div>
           </CardContent>
