@@ -1,3 +1,19 @@
+// Ambient declaration for universal compatibility (Browser / Node / Edge)
+declare const process:
+  | {
+      cpuUsage?: (prev?: { user: number; system: number }) => {
+        user: number;
+        system: number;
+      };
+      memoryUsage?: () => {
+        heapUsed: number;
+        heapTotal: number;
+        external?: number;
+        rss?: number;
+      };
+    }
+  | undefined;
+
 export interface MetricOptions {
   service?: string;
   environment?: "prod" | "staging" | "dev";
