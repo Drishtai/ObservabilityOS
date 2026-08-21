@@ -164,6 +164,17 @@ export async function buildAndSendEmailDigest(user: {
           model: project.aiModel,
           baseUrl: project.aiBaseUrl,
           enabled: project.aiEnabled,
+          anthropicApiKey: project.anthropicApiKey,
+          anthropicModel: project.anthropicModel,
+          openaiApiKey: project.openaiApiKey,
+          openaiModel: project.openaiModel,
+          openaiBaseUrl: project.openaiBaseUrl,
+          aicreditsApiKey: project.aicreditsApiKey,
+          aicreditsModel: project.aicreditsModel,
+          customAiApiKey: project.customAiApiKey,
+          customAiModel: project.customAiModel,
+          customAiBaseUrl: project.customAiBaseUrl,
+          fallbackOrder: project.aiFallbackOrder,
         },
       });
     } catch (err) {

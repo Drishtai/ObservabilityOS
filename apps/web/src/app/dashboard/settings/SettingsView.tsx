@@ -23,6 +23,10 @@ import {
   Eye,
   EyeOff,
   Cpu,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,11 +60,22 @@ interface SettingsViewProps {
     jiraIssueType?: string;
     minErrorCount: number;
     zScoreThreshold: number;
+    aiEnabled?: boolean;
     aiProvider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
     aiApiKey?: string;
     aiModel?: string;
     aiBaseUrl?: string;
-    aiEnabled?: boolean;
+    anthropicApiKey?: string;
+    anthropicModel?: string;
+    openaiApiKey?: string;
+    openaiModel?: string;
+    openaiBaseUrl?: string;
+    aicreditsApiKey?: string;
+    aicreditsModel?: string;
+    customAiApiKey?: string;
+    customAiModel?: string;
+    customAiBaseUrl?: string;
+    aiFallbackOrder?: string[];
   };
 }
 
@@ -439,13 +454,63 @@ export default function SettingsView({ project }: SettingsViewProps) {
 
   // AI Configuration State
   const [aiEnabled, setAiEnabled] = useState(project.aiEnabled ?? true);
-  const [aiProvider, setAiProvider] = useState<
-    "system" | "openai" | "anthropic" | "aicredits" | "custom"
-  >(project.aiProvider || "system");
-  const [aiApiKey, setAiApiKey] = useState(project.aiApiKey || "");
-  const [aiModel, setAiModel] = useState(project.aiModel || "");
-  const [aiBaseUrl, setAiBaseUrl] = useState(project.aiBaseUrl || "");
-  const [showAiKey, setShowAiKey] = useState(false);
+  const [activeAiTab, setActiveAiTab] = useState<
+    "anthropic" | "openai" | "aicredits" | "custom"
+  >("anthropic");
+
+  const [anthropicApiKey, setAnthropicApiKey] = useState(
+    project.anthropicApiKey || "",
+  );
+  const [anthropicModel, setAnthropicModel] = useState(
+    project.anthropicModel || "",
+  );
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+
+  const [openaiApiKey, setOpenaiApiKey] = useState(
+    project.openaiApiKey || "",
+  );
+  const [openaiModel, setOpenaiModel] = useState(
+    project.openaiModel || "",
+  );
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState(
+    project.openaiBaseUrl || "",
+  );
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+
+  const [aicreditsApiKey, setAicreditsApiKey] = useState(
+    project.aicreditsApiKey || "",
+  );
+  const [aicreditsModel, setAicreditsModel] = useState(
+    project.aicreditsModel || "",
+  );
+  const [showAicreditsKey, setShowAicreditsKey] = useState(false);
+
+  const [customAiApiKey, setCustomAiApiKey] = useState(
+    project.customAiApiKey || "",
+  );
+  const [customAiModel, setCustomAiModel] = useState(
+    project.customAiModel || "",
+  );
+  const [customAiBaseUrl, setCustomAiBaseUrl] = useState(
+    project.customAiBaseUrl || "",
+  );
+  const [showCustomAiKey, setShowCustomAiKey] = useState(false);
+
+  const [aiFallbackOrder, setAiFallbackOrder] = useState<string[]>(
+    project.aiFallbackOrder && project.aiFallbackOrder.length > 0
+      ? project.aiFallbackOrder
+      : ["anthropic", "openai", "aicredits", "custom"],
+  );
+
+  const moveFallbackOrder = (index: number, direction: "up" | "down") => {
+    const newOrder = [...aiFallbackOrder];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newOrder.length) return;
+    const temp = newOrder[index];
+    newOrder[index] = newOrder[targetIndex];
+    newOrder[targetIndex] = temp;
+    setAiFallbackOrder(newOrder);
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
@@ -479,11 +544,18 @@ export default function SettingsView({ project }: SettingsViewProps) {
           jiraIssueType: jiraIssueType.trim(),
           minErrorCount: Number(minErrorCount),
           zScoreThreshold: Number(zScoreThreshold),
-          aiProvider,
-          aiApiKey: aiApiKey.trim(),
-          aiModel: aiModel.trim(),
-          aiBaseUrl: aiBaseUrl.trim(),
           aiEnabled,
+          anthropicApiKey: anthropicApiKey.trim(),
+          anthropicModel: anthropicModel.trim(),
+          openaiApiKey: openaiApiKey.trim(),
+          openaiModel: openaiModel.trim(),
+          openaiBaseUrl: openaiBaseUrl.trim(),
+          aicreditsApiKey: aicreditsApiKey.trim(),
+          aicreditsModel: aicreditsModel.trim(),
+          customAiApiKey: customAiApiKey.trim(),
+          customAiModel: customAiModel.trim(),
+          customAiBaseUrl: customAiBaseUrl.trim(),
+          aiFallbackOrder,
         }),
       });
 
@@ -911,15 +983,17 @@ export default function SettingsView({ project }: SettingsViewProps) {
           </CardContent>
         </Card>
 
-        {/* AI Root-Cause Analysis & Model Keys Section */}
-        <Card className="relative overflow-hidden">
+        {/* AI Root-Cause Analysis & Multi-Level Fallback Pipeline Section */}
+        <Card className="relative overflow-hidden border-indigo-500/20">
           <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                AI Incident Root-Cause Analysis & Provider Keys
-              </CardTitle>
+              <div>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
+                  AI Incident Root-Cause Reasoning & Multi-Level Fallback
+                </CardTitle>
+              </div>
             </div>
             <Badge
               variant="outline"
@@ -929,18 +1003,18 @@ export default function SettingsView({ project }: SettingsViewProps) {
                   : "border-slate-800 text-slate-500 bg-slate-900"
               }`}
             >
-              {aiEnabled ? "AI Enabled" : "AI Disabled"}
+              {aiEnabled ? "AI Active" : "AI Disabled"}
             </Badge>
           </CardHeader>
-          <CardContent className="space-y-6 max-w-2xl">
+          <CardContent className="space-y-6">
             {/* Enable/Disable Toggle */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-slate-950/80 border border-slate-800/80">
               <div className="space-y-0.5">
                 <Label htmlFor="aiToggle" className="text-xs font-semibold text-slate-200 cursor-pointer">
-                  Automated AI Root-Cause Reasoning
+                  Automated AI Anomaly Synthesis & Morning Summaries
                 </Label>
                 <p className="text-[10px] text-slate-500">
-                  When anomalies are detected, AI synthesizes error traces, deploy diffs, and metric shifts into a human-readable diagnosis.
+                  When anomalies occur, the engine queries your configured AI providers in sequence. If a provider is down, rate-limited (429), or unavailable, it automatically fails over to the next level.
                 </p>
               </div>
               <input
@@ -953,137 +1027,432 @@ export default function SettingsView({ project }: SettingsViewProps) {
             </div>
 
             {aiEnabled && (
-              <div className="space-y-4">
-                {/* Provider Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="aiProvider" className="text-xs">
-                    AI Intelligence Provider
-                  </Label>
-                  <select
-                    id="aiProvider"
-                    value={aiProvider}
-                    onChange={(e) =>
-                      setAiProvider(
-                        e.target.value as
-                          | "system"
-                          | "openai"
-                          | "anthropic"
-                          | "aicredits"
-                          | "custom"
-                      )
-                    }
-                    className="w-full h-9 rounded-md border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="system">
-                      System Default (Uses platform fallback environment keys)
-                    </option>
-                    <option value="openai">
-                      OpenAI (GPT-4o, GPT-4o-mini)
-                    </option>
-                    <option value="anthropic">
-                      Anthropic Claude (Claude 3.5 Haiku, Claude 3.5 Sonnet)
-                    </option>
-                    <option value="aicredits">
-                      AICredits Gateway (Multi-model SRE routing)
-                    </option>
-                    <option value="custom">
-                      Custom / OpenAI-Compatible (Groq, OpenRouter, Together, Ollama)
-                    </option>
-                  </select>
+              <div className="space-y-6">
+                {/* Visual Multi-Level Fallback Chain Pipeline */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      Active Failover Priority Chain
+                    </Label>
+                    <span className="text-[10px] text-slate-500">
+                      Use ▲ ▼ to customize failover execution order
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {aiFallbackOrder.map((providerKey, idx) => {
+                      const getProviderMeta = (key: string) => {
+                        switch (key) {
+                          case "anthropic":
+                            return {
+                              name: "Anthropic Claude",
+                              desc: "Claude 3.5 Haiku / Sonnet",
+                              hasKey: !!anthropicApiKey,
+                            };
+                          case "openai":
+                            return {
+                              name: "OpenAI GPT",
+                              desc: "GPT-4o / GPT-4o-mini",
+                              hasKey: !!openaiApiKey,
+                            };
+                          case "aicredits":
+                            return {
+                              name: "AICredits Gateway",
+                              desc: "Multi-Model SRE Router",
+                              hasKey: !!aicreditsApiKey,
+                            };
+                          case "custom":
+                            return {
+                              name: "Custom / OpenAI-Compatible",
+                              desc: "Groq / OpenRouter / Ollama / vLLM",
+                              hasKey: !!customAiApiKey || !!customAiBaseUrl,
+                            };
+                          default:
+                            return {
+                              name: key,
+                              desc: "AI Provider",
+                              hasKey: false,
+                            };
+                        }
+                      };
+
+                      const meta = getProviderMeta(providerKey);
+
+                      return (
+                        <div
+                          key={providerKey}
+                          className="flex items-center justify-between p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 hover:border-slate-700/80 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-mono border-indigo-500/30 text-indigo-300 bg-indigo-500/10 px-2 py-0.5"
+                            >
+                              Level {idx + 1}
+                            </Badge>
+                            <div>
+                              <div className="text-xs font-medium text-slate-200">
+                                {meta.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                {meta.desc}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {meta.hasKey ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                              >
+                                Custom Key Active
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-slate-800 text-slate-400 bg-slate-900"
+                              >
+                                Server Env Fallback
+                              </Badge>
+                            )}
+
+                            <div className="flex items-center gap-1 border-l border-slate-800 pl-2">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveFallbackOrder(idx, "up")}
+                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                title="Move up in priority"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === aiFallbackOrder.length - 1}
+                                onClick={() => moveFallbackOrder(idx, "down")}
+                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                                title="Move down in priority"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Safety Net Badge */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-indigo-950/20 border border-dashed border-indigo-500/30">
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-mono border-slate-700 text-slate-400 bg-slate-900 px-2 py-0.5"
+                        >
+                          Final Safety Net
+                        </Badge>
+                        <div>
+                          <div className="text-xs font-medium text-slate-300">
+                            Local Heuristics Engine
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            Deterministic zero-cost rule engine if all upstream APIs fail
+                          </div>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-indigo-500/30 text-indigo-300 bg-indigo-500/10 flex items-center gap-1"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        Built-in
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
 
-                {/* API Key Input */}
-                {aiProvider !== "system" && (
-                  <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="aiApiKey" className="text-xs">
-                          {aiProvider === "anthropic"
-                            ? "Anthropic API Key"
-                            : aiProvider === "openai"
-                              ? "OpenAI API Key"
-                              : aiProvider === "aicredits"
-                                ? "AICredits API Key"
-                                : "API Key / Bearer Token"}
-                        </Label>
-                        <button
-                          type="button"
-                          onClick={() => setShowAiKey(!showAiKey)}
-                          className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
-                        >
-                          {showAiKey ? (
-                            <>
-                              <EyeOff className="w-3 h-3" /> Hide
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="w-3 h-3" /> Reveal
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <Input
-                        id="aiApiKey"
-                        type={showAiKey ? "text" : "password"}
-                        value={aiApiKey}
-                        onChange={(e) => setAiApiKey(e.target.value)}
-                        placeholder={
-                          aiProvider === "anthropic"
-                            ? "sk-ant-api03-..."
-                            : aiProvider === "openai"
-                              ? "sk-proj-..."
-                              : "Enter API Key"
-                        }
-                        className="font-mono placeholder:text-slate-700 text-xs"
-                      />
-                      <p className="text-[10px] text-slate-500">
-                        Leave blank to inherit global server environment variables.
-                      </p>
-                    </div>
+                {/* Provider API Key & Model Configuration Tabs */}
+                <div className="space-y-4 pt-2 border-t border-slate-800/80">
+                  <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-indigo-400" />
+                    Configure Provider API Keys & Model Identifiers
+                  </Label>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Model Name */}
+                  {/* Tab Navigation */}
+                  <div className="flex flex-wrap gap-1 p-1 bg-slate-950/80 border border-slate-800 rounded-lg">
+                    {[
+                      { id: "anthropic", label: "Anthropic Claude" },
+                      { id: "openai", label: "OpenAI GPT" },
+                      { id: "aicredits", label: "AICredits Gateway" },
+                      { id: "custom", label: "Custom / Groq / Ollama" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() =>
+                          setActiveAiTab(
+                            tab.id as "anthropic" | "openai" | "aicredits" | "custom",
+                          )
+                        }
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
+                          activeAiTab === tab.id
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Anthropic Tab */}
+                  {activeAiTab === "anthropic" && (
+                    <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="anthropicApiKey" className="text-xs">
+                            Anthropic Claude API Key
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                          >
+                            {showAnthropicKey ? (
+                              <>
+                                <EyeOff className="w-3 h-3" /> Hide
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3 h-3" /> Reveal
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <Input
+                          id="anthropicApiKey"
+                          type={showAnthropicKey ? "text" : "password"}
+                          value={anthropicApiKey}
+                          onChange={(e) => setAnthropicApiKey(e.target.value)}
+                          placeholder="sk-ant-api03-..."
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          Leave blank to inherit global server ANTHROPIC_API_KEY environment variable.
+                        </p>
+                      </div>
+
                       <div className="space-y-1.5">
-                        <Label htmlFor="aiModel" className="text-xs">
+                        <Label htmlFor="anthropicModel" className="text-xs">
                           Model Identifier (Optional)
                         </Label>
                         <Input
-                          id="aiModel"
+                          id="anthropicModel"
                           type="text"
-                          value={aiModel}
-                          onChange={(e) => setAiModel(e.target.value)}
-                          placeholder={
-                            aiProvider === "anthropic"
-                              ? "claude-3-5-haiku-20241022"
-                              : aiProvider === "openai"
-                                ? "gpt-4o-mini"
-                                : aiProvider === "custom"
-                                  ? "llama-3.3-70b-versatile"
-                                  : "default"
-                          }
+                          value={anthropicModel}
+                          onChange={(e) => setAnthropicModel(e.target.value)}
+                          placeholder="claude-3-5-haiku-20241022"
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          Defaults to fast low-latency Claude 3.5 Haiku.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* OpenAI Tab */}
+                  {activeAiTab === "openai" && (
+                    <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="openaiApiKey" className="text-xs">
+                            OpenAI API Key
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                          >
+                            {showOpenaiKey ? (
+                              <>
+                                <EyeOff className="w-3 h-3" /> Hide
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3 h-3" /> Reveal
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <Input
+                          id="openaiApiKey"
+                          type={showOpenaiKey ? "text" : "password"}
+                          value={openaiApiKey}
+                          onChange={(e) => setOpenaiApiKey(e.target.value)}
+                          placeholder="sk-proj-..."
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          Leave blank to inherit global server OPENAI_API_KEY environment variable.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="openaiModel" className="text-xs">
+                            Model Identifier
+                          </Label>
+                          <Input
+                            id="openaiModel"
+                            type="text"
+                            value={openaiModel}
+                            onChange={(e) => setOpenaiModel(e.target.value)}
+                            placeholder="gpt-4o-mini"
+                            className="font-mono placeholder:text-slate-700 text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="openaiBaseUrl" className="text-xs">
+                            Base URL / Proxy (Optional)
+                          </Label>
+                          <Input
+                            id="openaiBaseUrl"
+                            type="url"
+                            value={openaiBaseUrl}
+                            onChange={(e) => setOpenaiBaseUrl(e.target.value)}
+                            placeholder="https://api.openai.com/v1"
+                            className="font-mono placeholder:text-slate-700 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AICredits Tab */}
+                  {activeAiTab === "aicredits" && (
+                    <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="aicreditsApiKey" className="text-xs">
+                            AICredits Gateway API Key
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowAicreditsKey(!showAicreditsKey)}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                          >
+                            {showAicreditsKey ? (
+                              <>
+                                <EyeOff className="w-3 h-3" /> Hide
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3 h-3" /> Reveal
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <Input
+                          id="aicreditsApiKey"
+                          type={showAicreditsKey ? "text" : "password"}
+                          value={aicreditsApiKey}
+                          onChange={(e) => setAicreditsApiKey(e.target.value)}
+                          placeholder="aic_live_..."
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          Leave blank to inherit server AICREDITS_API_KEY environment variable.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="aicreditsModel" className="text-xs">
+                          Preferred Gateway Model
+                        </Label>
+                        <Input
+                          id="aicreditsModel"
+                          type="text"
+                          value={aicreditsModel}
+                          onChange={(e) => setAicreditsModel(e.target.value)}
+                          placeholder="anthropic/claude-3-5-haiku-20241022"
+                          className="font-mono placeholder:text-slate-700 text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom Tab */}
+                  {activeAiTab === "custom" && (
+                    <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="customAiApiKey" className="text-xs">
+                            Custom Endpoint API Key / Bearer Token
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowCustomAiKey(!showCustomAiKey)}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                          >
+                            {showCustomAiKey ? (
+                              <>
+                                <EyeOff className="w-3 h-3" /> Hide
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3 h-3" /> Reveal
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <Input
+                          id="customAiApiKey"
+                          type={showCustomAiKey ? "text" : "password"}
+                          value={customAiApiKey}
+                          onChange={(e) => setCustomAiApiKey(e.target.value)}
+                          placeholder="gsk_... or custom-key"
                           className="font-mono placeholder:text-slate-700 text-xs"
                         />
                       </div>
 
-                      {/* Custom Base URL (if custom or OpenAI-compatible) */}
-                      {(aiProvider === "custom" || aiProvider === "openai") && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                          <Label htmlFor="aiBaseUrl" className="text-xs">
-                            Base URL / Proxy (Optional)
+                          <Label htmlFor="customAiBaseUrl" className="text-xs">
+                            Base URL / OpenAI-Compatible Endpoint
                           </Label>
                           <Input
-                            id="aiBaseUrl"
+                            id="customAiBaseUrl"
                             type="url"
-                            value={aiBaseUrl}
-                            onChange={(e) => setAiBaseUrl(e.target.value)}
+                            value={customAiBaseUrl}
+                            onChange={(e) => setCustomAiBaseUrl(e.target.value)}
                             placeholder="https://api.groq.com/openai/v1"
                             className="font-mono placeholder:text-slate-700 text-xs"
                           />
                         </div>
-                      )}
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="customAiModel" className="text-xs">
+                            Model Identifier
+                          </Label>
+                          <Input
+                            id="customAiModel"
+                            type="text"
+                            value={customAiModel}
+                            onChange={(e) => setCustomAiModel(e.target.value)}
+                            placeholder="llama-3.3-70b-versatile"
+                            className="font-mono placeholder:text-slate-700 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Supports any OpenAI-compatible provider (Groq, Together AI, OpenRouter, self-hosted vLLM/Ollama).
+                      </p>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

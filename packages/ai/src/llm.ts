@@ -91,6 +91,7 @@ class SimpleCircuitBreaker {
 const anthropicBreaker = new SimpleCircuitBreaker("Anthropic");
 const openaiBreaker = new SimpleCircuitBreaker("OpenAI");
 const aicreditsBreaker = new SimpleCircuitBreaker("AICredits");
+const customBreaker = new SimpleCircuitBreaker("CustomAI");
 
 // Utility to execute fetch with a strict abort signal timeout
 async function fetchWithTimeout(
@@ -181,131 +182,314 @@ function parseJSONContentAndValidate(text: string): IncidentAnalysis {
     summary:
       typeof parsed.summary === "string" && parsed.summary
         ? parsed.summary
-        : "Telemetry analysis completed with baseline heuristics.",
+        : "The service encountered an unexpected error spike.",
     rootCause:
       typeof parsed.rootCause === "string" && parsed.rootCause
         ? parsed.rootCause
-        : "Unknown system anomaly",
+        : "Exception rate exceeded baseline thresholds.",
     impact:
       typeof parsed.impact === "string" && parsed.impact
         ? parsed.impact
-        : "Partial system degradation",
+        : "System operations are partially degraded.",
     suggestedFix: Array.isArray(parsed.suggestedFix)
       ? parsed.suggestedFix.map(String)
-      : ["Inspect SRE error log streams.", "Verify system status details."],
-    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.7,
+      : [
+          "Inspect recent error logs for service exceptions.",
+          "Verify server availability.",
+        ],
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.8,
   };
 }
 
-async function callCustomOrProviderLLM(
+/**
+ * Executes a robust, multi-level AI provider fallback chain.
+ * Tries configured project keys first, then platform environment fallback keys, across all providers.
+ */
+async function executeMultiLevelAiFallback(
   prompt: string,
+  isJsonFormat: boolean,
   aiConfig?: {
+    enabled?: boolean;
     provider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
     apiKey?: string;
     model?: string;
     baseUrl?: string;
-    enabled?: boolean;
+    anthropicApiKey?: string;
+    anthropicModel?: string;
+    openaiApiKey?: string;
+    openaiModel?: string;
+    openaiBaseUrl?: string;
+    aicreditsApiKey?: string;
+    aicreditsModel?: string;
+    customAiApiKey?: string;
+    customAiModel?: string;
+    customAiBaseUrl?: string;
+    fallbackOrder?: string[];
   },
-  isJsonFormat = true,
 ): Promise<string | null> {
-  if (!aiConfig || aiConfig.provider === "system") return null;
-  const { provider, apiKey, model, baseUrl } = aiConfig;
+  const fallbackOrder = aiConfig?.fallbackOrder && aiConfig.fallbackOrder.length > 0
+    ? aiConfig.fallbackOrder
+    : ["anthropic", "openai", "aicredits", "custom"];
 
-  // OpenAI / Custom / OpenAI-Compatible (Groq, Together, Ollama, OpenRouter, AICredits)
-  if (
-    provider === "openai" ||
-    provider === "custom" ||
-    (provider === "aicredits" && apiKey)
-  ) {
-    const key =
-      apiKey ||
-      (provider === "openai"
-        ? process.env.OPENAI_API_KEY
-        : process.env.AICREDITS_API_KEY);
-    if (!key && provider !== "custom") return null;
+  for (const providerId of fallbackOrder) {
+    if (providerId === "anthropic") {
+      const key =
+        aiConfig?.anthropicApiKey ||
+        (aiConfig?.provider === "anthropic" ? aiConfig?.apiKey : undefined) ||
+        process.env.ANTHROPIC_API_KEY;
 
-    const url = baseUrl
-      ? `${baseUrl.replace(/\/+$/, "")}/chat/completions`
-      : provider === "aicredits"
-        ? "https://aicredits.in/v1/chat/completions"
-        : "https://api.openai.com/v1/chat/completions";
+      if (key && anthropicBreaker.canExecute()) {
+        const model =
+          aiConfig?.anthropicModel ||
+          (aiConfig?.provider === "anthropic" ? aiConfig?.model : undefined) ||
+          "claude-3-5-haiku-20241022";
+        const url =
+          aiConfig?.baseUrl && aiConfig?.provider === "anthropic"
+            ? `${aiConfig.baseUrl.replace(/\/+$/, "")}/v1/messages`
+            : "https://api.anthropic.com/v1/messages";
 
-    const defaultModel =
-      provider === "aicredits" ? "openai/gpt-4o-mini" : "gpt-4o-mini";
-    const selectedModel = model?.trim() || defaultModel;
+        try {
+          const response = await callProviderWithRetry(
+            "Anthropic",
+            anthropicBreaker,
+            () =>
+              fetchWithTimeout(
+                url,
+                {
+                  method: "POST",
+                  headers: {
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model,
+                    max_tokens: isJsonFormat ? 1500 : 300,
+                    messages: [{ role: "user", content: prompt }],
+                  }),
+                },
+                6000,
+              ),
+          );
 
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-    };
-    if (key) {
-      headers["Authorization"] = `Bearer ${key}`;
-    }
-
-    try {
-      const response = await fetchWithTimeout(
-        url,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: selectedModel,
-            max_tokens: isJsonFormat ? 1500 : 300,
-            messages: [{ role: "user", content: prompt }],
-            response_format: isJsonFormat ? { type: "json_object" } : undefined,
-          }),
-        },
-        10000,
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        return data.choices?.[0]?.message?.content || "";
-      } else {
-        console.warn(
-          `[AI Custom/OpenAI Provider Error]: Status ${response.status} from ${url}`,
-        );
+          if (response.ok) {
+            const data = await response.json();
+            const textContent = data.content?.[0]?.text || "";
+            if (textContent.trim()) {
+              console.log(
+                `[ObservabilityOS AI] Successfully generated analysis via Anthropic Claude (${model}).`,
+              );
+              return textContent;
+            }
+          } else {
+            console.warn(
+              `[ObservabilityOS AI] Anthropic responded with status ${response.status}. Falling back to next level...`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `[ObservabilityOS AI] Anthropic Claude provider failed. Falling back to next provider in chain...`,
+            err,
+          );
+        }
       }
-    } catch (err) {
-      console.warn(`[AI Custom/OpenAI Provider Exception]:`, err);
-    }
-  } else if (provider === "anthropic") {
-    const key = apiKey || process.env.ANTHROPIC_API_KEY;
-    if (!key) return null;
+    } else if (providerId === "openai") {
+      const key =
+        aiConfig?.openaiApiKey ||
+        (aiConfig?.provider === "openai" ? aiConfig?.apiKey : undefined) ||
+        process.env.OPENAI_API_KEY;
 
-    const selectedModel = model?.trim() || "claude-3-5-haiku-20241022";
-    const url = baseUrl
-      ? `${baseUrl.replace(/\/+$/, "")}/v1/messages`
-      : "https://api.anthropic.com/v1/messages";
+      if (key && openaiBreaker.canExecute()) {
+        const model =
+          aiConfig?.openaiModel ||
+          (aiConfig?.provider === "openai" ? aiConfig?.model : undefined) ||
+          "gpt-4o-mini";
+        const rawUrl =
+          aiConfig?.openaiBaseUrl ||
+          (aiConfig?.provider === "openai" ? aiConfig?.baseUrl : undefined) ||
+          "https://api.openai.com/v1";
+        const url = rawUrl.endsWith("/chat/completions")
+          ? rawUrl
+          : `${rawUrl.replace(/\/+$/, "")}/chat/completions`;
 
-    try {
-      const response = await fetchWithTimeout(
-        url,
-        {
-          method: "POST",
-          headers: {
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            max_tokens: isJsonFormat ? 1500 : 300,
-            messages: [{ role: "user", content: prompt }],
-          }),
-        },
-        10000,
-      );
+        try {
+          const response = await callProviderWithRetry(
+            "OpenAI",
+            openaiBreaker,
+            () =>
+              fetchWithTimeout(
+                url,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${key}`,
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model,
+                    max_tokens: isJsonFormat ? 1500 : 300,
+                    messages: [{ role: "user", content: prompt }],
+                    response_format: isJsonFormat
+                      ? { type: "json_object" }
+                      : undefined,
+                  }),
+                },
+                6000,
+              ),
+          );
 
-      if (response.ok) {
-        const data = await response.json();
-        return data.content?.[0]?.text || "";
-      } else {
-        console.warn(
-          `[AI Anthropic Provider Error]: Status ${response.status} from ${url}`,
-        );
+          if (response.ok) {
+            const data = await response.json();
+            const textContent = data.choices?.[0]?.message?.content || "";
+            if (textContent.trim()) {
+              console.log(
+                `[ObservabilityOS AI] Successfully generated analysis via OpenAI (${model}).`,
+              );
+              return textContent;
+            }
+          } else {
+            console.warn(
+              `[ObservabilityOS AI] OpenAI responded with status ${response.status}. Falling back to next level...`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `[ObservabilityOS AI] OpenAI provider failed. Falling back to next provider in chain...`,
+            err,
+          );
+        }
       }
-    } catch (err) {
-      console.warn(`[AI Anthropic Provider Exception]:`, err);
+    } else if (providerId === "aicredits") {
+      const key =
+        aiConfig?.aicreditsApiKey ||
+        (aiConfig?.provider === "aicredits" ? aiConfig?.apiKey : undefined) ||
+        process.env.AICREDITS_API_KEY;
+
+      if (key && aicreditsBreaker.canExecute()) {
+        const gatewayModels = [
+          aiConfig?.aicreditsModel,
+          process.env.AICREDITS_MODEL,
+          "anthropic/claude-3-5-haiku-20241022",
+          "openai/gpt-4o-mini",
+        ].filter(Boolean) as string[];
+
+        for (const model of gatewayModels) {
+          try {
+            const response = await callProviderWithRetry(
+              `AICredits:${model}`,
+              aicreditsBreaker,
+              () =>
+                fetchWithTimeout(
+                  "https://aicredits.in/v1/chat/completions",
+                  {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${key}`,
+                      "content-type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      model,
+                      max_tokens: isJsonFormat ? 1500 : 300,
+                      messages: [{ role: "user", content: prompt }],
+                      response_format:
+                        isJsonFormat &&
+                        (model.includes("gpt") || model.includes("openai"))
+                          ? { type: "json_object" }
+                          : undefined,
+                    }),
+                  },
+                  6000,
+                ),
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              const textContent = data.choices?.[0]?.message?.content || "";
+              if (textContent.trim()) {
+                console.log(
+                  `[ObservabilityOS AI] Successfully generated analysis via AICredits (${model}).`,
+                );
+                return textContent;
+              }
+            }
+          } catch (err) {
+            console.warn(
+              `[ObservabilityOS AI] AICredits Gateway model ${model} failed, trying next fallback...`,
+              err,
+            );
+          }
+        }
+      }
+    } else if (providerId === "custom") {
+      const key =
+        aiConfig?.customAiApiKey ||
+        (aiConfig?.provider === "custom" ? aiConfig?.apiKey : undefined) ||
+        "";
+      const rawUrl =
+        aiConfig?.customAiBaseUrl ||
+        (aiConfig?.provider === "custom" ? aiConfig?.baseUrl : undefined) ||
+        "https://api.groq.com/openai/v1";
+
+      if ((key || rawUrl) && customBreaker.canExecute()) {
+        const model =
+          aiConfig?.customAiModel ||
+          (aiConfig?.provider === "custom" ? aiConfig?.model : undefined) ||
+          "llama-3.3-70b-versatile";
+        const url = rawUrl.endsWith("/chat/completions")
+          ? rawUrl
+          : `${rawUrl.replace(/\/+$/, "")}/chat/completions`;
+
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+        };
+        if (key) {
+          headers["Authorization"] = `Bearer ${key}`;
+        }
+
+        try {
+          const response = await callProviderWithRetry(
+            "CustomAI",
+            customBreaker,
+            () =>
+              fetchWithTimeout(
+                url,
+                {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    model,
+                    max_tokens: isJsonFormat ? 1500 : 300,
+                    messages: [{ role: "user", content: prompt }],
+                    response_format: isJsonFormat
+                      ? { type: "json_object" }
+                      : undefined,
+                  }),
+                },
+                8000,
+              ),
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            const textContent = data.choices?.[0]?.message?.content || "";
+            if (textContent.trim()) {
+              console.log(
+                `[ObservabilityOS AI] Successfully generated analysis via Custom OpenAI-Compatible LLM (${model}).`,
+              );
+              return textContent;
+            }
+          } else {
+            console.warn(
+              `[ObservabilityOS AI] Custom LLM (${url}) returned status ${response.status}. Falling back...`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `[ObservabilityOS AI] Custom LLM (${url}) failed. Falling back to next level...`,
+            err,
+          );
+        }
+      }
     }
   }
 
@@ -313,8 +497,8 @@ async function callCustomOrProviderLLM(
 }
 
 /**
- * Invokes LLM providers (Anthropic Claude, OpenAI GPT-4o-mini) depending on active environment variables.
- * Falls back to a high-quality mock heuristic analyzer if no API keys are present.
+ * Invokes LLM providers with multi-level fallback across all configured keys and platforms.
+ * Falls back to high-quality heuristic reasoning if all upstream providers are unavailable.
  */
 export async function generateIncidentAnalysis(
   input: IncidentPromptInput,
@@ -336,34 +520,17 @@ export async function generateIncidentAnalysis(
 
   const prompt = generateIncidentPrompt(input);
 
-  // If user configured a custom/project-level AI provider
-  if (
-    input.aiConfig &&
-    input.aiConfig.provider &&
-    input.aiConfig.provider !== "system"
-  ) {
-    const customResult = await callCustomOrProviderLLM(
-      prompt,
-      input.aiConfig,
-      true,
-    );
-    if (customResult) {
-      try {
-        return parseJSONContentAndValidate(customResult);
-      } catch (parseErr) {
-        console.warn(
-          "[ObservabilityOS AI] Custom LLM returned unparseable JSON, falling back to default chain...",
-          parseErr,
-        );
-      }
-    }
-  }
+  const hasAnyKey =
+    !!input.aiConfig?.anthropicApiKey ||
+    !!input.aiConfig?.openaiApiKey ||
+    !!input.aiConfig?.aicreditsApiKey ||
+    !!input.aiConfig?.customAiApiKey ||
+    !!input.aiConfig?.apiKey ||
+    !!process.env.AICREDITS_API_KEY ||
+    !!process.env.ANTHROPIC_API_KEY ||
+    !!process.env.OPENAI_API_KEY;
 
-  const AICREDITS_API_KEY = process.env.AICREDITS_API_KEY;
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-  if (AICREDITS_API_KEY || ANTHROPIC_API_KEY || OPENAI_API_KEY) {
+  if (hasAnyKey) {
     try {
       enforceCooldown();
     } catch (cooldownErr) {
@@ -375,166 +542,25 @@ export async function generateIncidentAnalysis(
     }
   }
 
-  // Provider Failover Chain: AICredits -> Anthropic -> OpenAI -> Mock
-  if (AICREDITS_API_KEY && aicreditsBreaker.canExecute()) {
-    const gatewayModels = [
-      process.env.AICREDITS_MODEL,
-      "anthropic/claude-3-5-haiku-20241022",
-      "openai/gpt-4o-mini",
-    ].filter(Boolean) as string[];
+  // Execute full multi-level fallback chain
+  const resultText = await executeMultiLevelAiFallback(
+    prompt,
+    true,
+    input.aiConfig,
+  );
 
-    for (const model of gatewayModels) {
-      try {
-        const response = await callProviderWithRetry(
-          `AICredits:${model}`,
-          aicreditsBreaker,
-          () =>
-            fetchWithTimeout(
-              "https://aicredits.in/v1/chat/completions",
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${AICREDITS_API_KEY}`,
-                  "content-type": "application/json",
-                },
-                body: JSON.stringify({
-                  model,
-                  max_tokens: 1500,
-                  messages: [{ role: "user", content: prompt }],
-                  response_format:
-                    model.includes("gpt") || model.includes("openai")
-                      ? { type: "json_object" }
-                      : undefined,
-                }),
-              },
-              5000,
-            ),
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `AICredits Gateway (${model}) returned status ${response.status}`,
-          );
-        }
-
-        const data = await response.json();
-        const usage = data.usage || {};
-        const inputTokens = usage.prompt_tokens || usage.input_tokens || 0;
-        const outputTokens =
-          usage.completion_tokens || usage.output_tokens || 0;
-        const cost = (inputTokens * 0.15 + outputTokens * 0.6) / 1000000;
-        console.log(
-          `[AI Cost Control] AICredits Gateway Call (${model}). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-        );
-
-        const textContent = data.choices?.[0]?.message?.content || "";
-        return parseJSONContentAndValidate(textContent);
-      } catch (err) {
-        console.warn(
-          `[ObservabilityOS AI] AICredits Gateway call with model ${model} failed, trying next gateway model or provider...`,
-          err,
-        );
-      }
-    }
-  }
-
-  if (ANTHROPIC_API_KEY && anthropicBreaker.canExecute()) {
+  if (resultText) {
     try {
-      const response = await callProviderWithRetry(
-        "Anthropic",
-        anthropicBreaker,
-        () =>
-          fetchWithTimeout(
-            "https://api.anthropic.com/v1/messages",
-            {
-              method: "POST",
-              headers: {
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "claude-3-5-haiku-20241022",
-                max_tokens: 1500,
-                messages: [{ role: "user", content: prompt }],
-              }),
-            },
-            5000,
-          ),
-      );
-
-      if (!response.ok) {
-        throw new Error(`Anthropic API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const usage = data.usage || {};
-      const inputTokens = usage.input_tokens || 0;
-      const outputTokens = usage.output_tokens || 0;
-      const cost = (inputTokens * 0.8 + outputTokens * 4.0) / 1000000;
-      console.log(
-        `[AI Cost Control] Anthropic Claude Call (Incident Analysis). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-      );
-
-      const textContent = data.content?.[0]?.text || "";
-      return parseJSONContentAndValidate(textContent);
-    } catch (err) {
+      return parseJSONContentAndValidate(resultText);
+    } catch (parseErr) {
       console.warn(
-        "[ObservabilityOS AI] Anthropic Claude call failed, trying OpenAI next...",
-        err,
+        "[ObservabilityOS AI] LLM response could not be parsed as JSON, falling back to heuristic engine...",
+        parseErr,
       );
     }
   }
 
-  if (OPENAI_API_KEY && openaiBreaker.canExecute()) {
-    try {
-      const response = await callProviderWithRetry(
-        "OpenAI",
-        openaiBreaker,
-        () =>
-          fetchWithTimeout(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${OPENAI_API_KEY}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "gpt-4o-mini",
-                max_tokens: 1500,
-                messages: [{ role: "user", content: prompt }],
-                response_format: { type: "json_object" },
-              }),
-            },
-            5000,
-          ),
-      );
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const usage = data.usage || {};
-      const inputTokens = usage.prompt_tokens || 0;
-      const outputTokens = usage.completion_tokens || 0;
-      const cost = (inputTokens * 0.15 + outputTokens * 0.6) / 1000000;
-      console.log(
-        `[AI Cost Control] OpenAI GPT Call (Incident Analysis). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-      );
-
-      const textContent = data.choices?.[0]?.message?.content || "";
-      return parseJSONContentAndValidate(textContent);
-    } catch (err) {
-      console.warn(
-        "[ObservabilityOS AI] OpenAI GPT call failed, falling back to mock...",
-        err,
-      );
-    }
-  }
-
-  // Fallback to Mock Heuristics for local development testing
+  // Graceful fallback to heuristic reasoning engine
   return generateMockAnalysis(input);
 }
 
@@ -739,27 +765,17 @@ export async function generateEmailDigestSummary(
 
   const prompt = generateDigestPrompt(input);
 
-  // If user configured a custom/project-level AI provider
-  if (
-    input.aiConfig &&
-    input.aiConfig.provider &&
-    input.aiConfig.provider !== "system"
-  ) {
-    const customResult = await callCustomOrProviderLLM(
-      prompt,
-      input.aiConfig,
-      false,
-    );
-    if (customResult) {
-      return customResult.trim();
-    }
-  }
+  const hasAnyKey =
+    !!input.aiConfig?.anthropicApiKey ||
+    !!input.aiConfig?.openaiApiKey ||
+    !!input.aiConfig?.aicreditsApiKey ||
+    !!input.aiConfig?.customAiApiKey ||
+    !!input.aiConfig?.apiKey ||
+    !!process.env.AICREDITS_API_KEY ||
+    !!process.env.ANTHROPIC_API_KEY ||
+    !!process.env.OPENAI_API_KEY;
 
-  const AICREDITS_API_KEY = process.env.AICREDITS_API_KEY;
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-  if (AICREDITS_API_KEY || ANTHROPIC_API_KEY || OPENAI_API_KEY) {
+  if (hasAnyKey) {
     try {
       enforceCooldown();
     } catch (cooldownErr) {
@@ -771,157 +787,14 @@ export async function generateEmailDigestSummary(
     }
   }
 
-  if (AICREDITS_API_KEY && aicreditsBreaker.canExecute()) {
-    const gatewayModels = [
-      process.env.AICREDITS_MODEL,
-      "anthropic/claude-3-5-haiku-20241022",
-      "openai/gpt-4o-mini",
-    ].filter(Boolean) as string[];
+  const resultText = await executeMultiLevelAiFallback(
+    prompt,
+    false,
+    input.aiConfig,
+  );
 
-    for (const model of gatewayModels) {
-      try {
-        const response = await callProviderWithRetry(
-          `AICredits:${model}`,
-          aicreditsBreaker,
-          () =>
-            fetchWithTimeout(
-              "https://aicredits.in/v1/chat/completions",
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${AICREDITS_API_KEY}`,
-                  "content-type": "application/json",
-                },
-                body: JSON.stringify({
-                  model,
-                  max_tokens: 300,
-                  messages: [{ role: "user", content: prompt }],
-                }),
-              },
-              5000,
-            ),
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `AICredits Gateway (${model}) returned status ${response.status}`,
-          );
-        }
-
-        const data = await response.json();
-        const usage = data.usage || {};
-        const inputTokens = usage.prompt_tokens || usage.input_tokens || 0;
-        const outputTokens =
-          usage.completion_tokens || usage.output_tokens || 0;
-        const cost = (inputTokens * 0.15 + outputTokens * 0.6) / 1000000;
-        console.log(
-          `[AI Cost Control] AICredits Gateway Call (${model}). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-        );
-
-        const textContent = data.choices?.[0]?.message?.content || "";
-        return textContent.trim();
-      } catch (err) {
-        console.warn(
-          `[ObservabilityOS AI] AICredits Gateway call with model ${model} failed, trying next gateway model or provider...`,
-          err,
-        );
-      }
-    }
-  }
-
-  if (ANTHROPIC_API_KEY && anthropicBreaker.canExecute()) {
-    try {
-      const response = await callProviderWithRetry(
-        "Anthropic",
-        anthropicBreaker,
-        () =>
-          fetchWithTimeout(
-            "https://api.anthropic.com/v1/messages",
-            {
-              method: "POST",
-              headers: {
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "claude-3-5-haiku-20241022",
-                max_tokens: 300,
-                messages: [{ role: "user", content: prompt }],
-              }),
-            },
-            5000,
-          ),
-      );
-
-      if (!response.ok) {
-        throw new Error(`Anthropic API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const usage = data.usage || {};
-      const inputTokens = usage.input_tokens || 0;
-      const outputTokens = usage.output_tokens || 0;
-      const cost = (inputTokens * 0.8 + outputTokens * 4.0) / 1000000;
-      console.log(
-        `[AI Cost Control] Anthropic Claude Call (Email Digest). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-      );
-
-      const textContent = data.content?.[0]?.text || "";
-      return textContent.trim();
-    } catch (err) {
-      console.warn(
-        "[ObservabilityOS AI] Anthropic Claude call failed, trying OpenAI next...",
-        err,
-      );
-    }
-  }
-
-  if (OPENAI_API_KEY && openaiBreaker.canExecute()) {
-    try {
-      const response = await callProviderWithRetry(
-        "OpenAI",
-        openaiBreaker,
-        () =>
-          fetchWithTimeout(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${OPENAI_API_KEY}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "gpt-4o-mini",
-                max_tokens: 300,
-                messages: [{ role: "user", content: prompt }],
-              }),
-            },
-            5000,
-          ),
-      );
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const usage = data.usage || {};
-      const inputTokens = usage.prompt_tokens || 0;
-      const outputTokens = usage.completion_tokens || 0;
-      const cost = (inputTokens * 0.15 + outputTokens * 0.6) / 1000000;
-      console.log(
-        `[AI Cost Control] OpenAI GPT Call (Email Digest). Input Tokens: ${inputTokens}, Output Tokens: ${outputTokens}, Cost: $${cost.toFixed(6)}`,
-      );
-
-      const textContent = data.choices?.[0]?.message?.content || "";
-      return textContent.trim();
-    } catch (err) {
-      console.warn(
-        "[ObservabilityOS AI] OpenAI GPT call failed, falling back to mock...",
-        err,
-      );
-    }
+  if (resultText && resultText.trim()) {
+    return resultText.trim();
   }
 
   return generateMockEmailDigestSummary(input);

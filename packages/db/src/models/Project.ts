@@ -44,11 +44,22 @@ export interface IProject {
   razorpaySubscriptionId?: string;
   subscriptionEndsAt?: Date;
   savedQueries?: ISavedQuery[];
+  aiEnabled?: boolean;
   aiProvider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
   aiApiKey?: string;
   aiModel?: string;
   aiBaseUrl?: string;
-  aiEnabled?: boolean;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  openaiBaseUrl?: string;
+  aicreditsApiKey?: string;
+  aicreditsModel?: string;
+  customAiApiKey?: string;
+  customAiModel?: string;
+  customAiBaseUrl?: string;
+  aiFallbackOrder?: string[];
 }
 
 export type ProjectDocument = IProject & Document;
@@ -109,6 +120,7 @@ const ProjectSchema = new Schema<IProject>(
     razorpaySubscriptionId: { type: String },
     subscriptionEndsAt: { type: Date },
     savedQueries: { type: [SavedQuerySchema], default: [] },
+    aiEnabled: { type: Boolean, default: true },
     aiProvider: {
       type: String,
       enum: ["system", "openai", "anthropic", "aicredits", "custom"],
@@ -117,7 +129,20 @@ const ProjectSchema = new Schema<IProject>(
     aiApiKey: { type: String, default: "" },
     aiModel: { type: String, default: "" },
     aiBaseUrl: { type: String, default: "" },
-    aiEnabled: { type: Boolean, default: true },
+    anthropicApiKey: { type: String, default: "" },
+    anthropicModel: { type: String, default: "" },
+    openaiApiKey: { type: String, default: "" },
+    openaiModel: { type: String, default: "" },
+    openaiBaseUrl: { type: String, default: "" },
+    aicreditsApiKey: { type: String, default: "" },
+    aicreditsModel: { type: String, default: "" },
+    customAiApiKey: { type: String, default: "" },
+    customAiModel: { type: String, default: "" },
+    customAiBaseUrl: { type: String, default: "" },
+    aiFallbackOrder: {
+      type: [String],
+      default: ["anthropic", "openai", "aicredits", "custom"],
+    },
   },
   { timestamps: true },
 );

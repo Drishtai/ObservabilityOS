@@ -26,6 +26,17 @@ const settingsUpdateSchema = z.object({
   aiModel: z.string().optional().or(z.literal("")),
   aiBaseUrl: z.string().optional().or(z.literal("")),
   aiEnabled: z.boolean().optional(),
+  anthropicApiKey: z.string().optional().or(z.literal("")),
+  anthropicModel: z.string().optional().or(z.literal("")),
+  openaiApiKey: z.string().optional().or(z.literal("")),
+  openaiModel: z.string().optional().or(z.literal("")),
+  openaiBaseUrl: z.string().optional().or(z.literal("")),
+  aicreditsApiKey: z.string().optional().or(z.literal("")),
+  aicreditsModel: z.string().optional().or(z.literal("")),
+  customAiApiKey: z.string().optional().or(z.literal("")),
+  customAiModel: z.string().optional().or(z.literal("")),
+  customAiBaseUrl: z.string().optional().or(z.literal("")),
+  aiFallbackOrder: z.array(z.string()).optional(),
   minErrorCount: z
     .number()
     .int()
@@ -82,7 +93,18 @@ export async function PATCH(request: Request) {
       validatedData.aiApiKey !== undefined ||
       validatedData.aiModel !== undefined ||
       validatedData.aiBaseUrl !== undefined ||
-      validatedData.aiEnabled !== undefined;
+      validatedData.aiEnabled !== undefined ||
+      validatedData.anthropicApiKey !== undefined ||
+      validatedData.anthropicModel !== undefined ||
+      validatedData.openaiApiKey !== undefined ||
+      validatedData.openaiModel !== undefined ||
+      validatedData.openaiBaseUrl !== undefined ||
+      validatedData.aicreditsApiKey !== undefined ||
+      validatedData.aicreditsModel !== undefined ||
+      validatedData.customAiApiKey !== undefined ||
+      validatedData.customAiModel !== undefined ||
+      validatedData.customAiBaseUrl !== undefined ||
+      validatedData.aiFallbackOrder !== undefined;
 
     // Update settings
     project.name = validatedData.name.trim();
@@ -120,6 +142,55 @@ export async function PATCH(request: Request) {
       project.aiEnabled = validatedData.aiEnabled;
     }
 
+    if (
+      validatedData.anthropicApiKey !== undefined &&
+      !validatedData.anthropicApiKey.includes("••••")
+    ) {
+      project.anthropicApiKey = validatedData.anthropicApiKey.trim();
+    }
+    if (validatedData.anthropicModel !== undefined) {
+      project.anthropicModel = validatedData.anthropicModel.trim();
+    }
+
+    if (
+      validatedData.openaiApiKey !== undefined &&
+      !validatedData.openaiApiKey.includes("••••")
+    ) {
+      project.openaiApiKey = validatedData.openaiApiKey.trim();
+    }
+    if (validatedData.openaiModel !== undefined) {
+      project.openaiModel = validatedData.openaiModel.trim();
+    }
+    if (validatedData.openaiBaseUrl !== undefined) {
+      project.openaiBaseUrl = validatedData.openaiBaseUrl.trim();
+    }
+
+    if (
+      validatedData.aicreditsApiKey !== undefined &&
+      !validatedData.aicreditsApiKey.includes("••••")
+    ) {
+      project.aicreditsApiKey = validatedData.aicreditsApiKey.trim();
+    }
+    if (validatedData.aicreditsModel !== undefined) {
+      project.aicreditsModel = validatedData.aicreditsModel.trim();
+    }
+
+    if (
+      validatedData.customAiApiKey !== undefined &&
+      !validatedData.customAiApiKey.includes("••••")
+    ) {
+      project.customAiApiKey = validatedData.customAiApiKey.trim();
+    }
+    if (validatedData.customAiModel !== undefined) {
+      project.customAiModel = validatedData.customAiModel.trim();
+    }
+    if (validatedData.customAiBaseUrl !== undefined) {
+      project.customAiBaseUrl = validatedData.customAiBaseUrl.trim();
+    }
+    if (validatedData.aiFallbackOrder !== undefined) {
+      project.aiFallbackOrder = validatedData.aiFallbackOrder;
+    }
+
     await project.save();
 
     if (webhookUpdated) {
@@ -145,17 +216,14 @@ export async function PATCH(request: Request) {
         targetEntity: "project",
         targetId: project._id.toString(),
         metadata: {
-          aiProvider: project.aiProvider,
           aiEnabled: project.aiEnabled,
-          aiModel: project.aiModel,
+          aiFallbackOrder: project.aiFallbackOrder,
         },
       });
     }
 
-    // Mask API key for response
-    const maskedAiApiKey = project.aiApiKey
-      ? `${project.aiApiKey.slice(0, 4)}••••••••${project.aiApiKey.slice(-4)}`
-      : "";
+    const maskKey = (k?: string) =>
+      k ? `${k.slice(0, 4)}••••••••${k.slice(-4)}` : "";
 
     return NextResponse.json({
       success: true,
@@ -176,12 +244,31 @@ export async function PATCH(request: Request) {
         jiraIssueType: project.jiraIssueType,
         minErrorCount: project.minErrorCount,
         zScoreThreshold: project.zScoreThreshold,
+        aiEnabled: project.aiEnabled ?? true,
         aiProvider: project.aiProvider || "system",
-        aiApiKey: maskedAiApiKey,
-        hasCustomAiKey: !!project.aiApiKey,
+        aiApiKey: maskKey(project.aiApiKey),
         aiModel: project.aiModel || "",
         aiBaseUrl: project.aiBaseUrl || "",
-        aiEnabled: project.aiEnabled ?? true,
+        anthropicApiKey: maskKey(project.anthropicApiKey),
+        anthropicModel: project.anthropicModel || "",
+        hasAnthropicKey: !!project.anthropicApiKey,
+        openaiApiKey: maskKey(project.openaiApiKey),
+        openaiModel: project.openaiModel || "",
+        openaiBaseUrl: project.openaiBaseUrl || "",
+        hasOpenaiKey: !!project.openaiApiKey,
+        aicreditsApiKey: maskKey(project.aicreditsApiKey),
+        aicreditsModel: project.aicreditsModel || "",
+        hasAicreditsKey: !!project.aicreditsApiKey,
+        customAiApiKey: maskKey(project.customAiApiKey),
+        customAiModel: project.customAiModel || "",
+        customAiBaseUrl: project.customAiBaseUrl || "",
+        hasCustomAiKey: !!project.customAiApiKey,
+        aiFallbackOrder: project.aiFallbackOrder || [
+          "anthropic",
+          "openai",
+          "aicredits",
+          "custom",
+        ],
       },
     });
   } catch (error) {

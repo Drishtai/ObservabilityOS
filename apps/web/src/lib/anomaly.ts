@@ -493,6 +493,17 @@ export async function processAnomalyDetection(
             model: projectDoc.aiModel,
             baseUrl: projectDoc.aiBaseUrl,
             enabled: projectDoc.aiEnabled,
+            anthropicApiKey: projectDoc.anthropicApiKey,
+            anthropicModel: projectDoc.anthropicModel,
+            openaiApiKey: projectDoc.openaiApiKey,
+            openaiModel: projectDoc.openaiModel,
+            openaiBaseUrl: projectDoc.openaiBaseUrl,
+            aicreditsApiKey: projectDoc.aicreditsApiKey,
+            aicreditsModel: projectDoc.aicreditsModel,
+            customAiApiKey: projectDoc.customAiApiKey,
+            customAiModel: projectDoc.customAiModel,
+            customAiBaseUrl: projectDoc.customAiBaseUrl,
+            fallbackOrder: projectDoc.aiFallbackOrder,
           }
         : undefined,
     });

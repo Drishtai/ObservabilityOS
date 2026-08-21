@@ -21,11 +21,22 @@ export interface HistoricalIncident {
 }
 
 export interface AIConfig {
+  enabled?: boolean;
   provider?: "system" | "openai" | "anthropic" | "aicredits" | "custom";
   apiKey?: string;
   model?: string;
   baseUrl?: string;
-  enabled?: boolean;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  openaiBaseUrl?: string;
+  aicreditsApiKey?: string;
+  aicreditsModel?: string;
+  customAiApiKey?: string;
+  customAiModel?: string;
+  customAiBaseUrl?: string;
+  fallbackOrder?: string[];
 }
 
 export interface IncidentPromptInput {
