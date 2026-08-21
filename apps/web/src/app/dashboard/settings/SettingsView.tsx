@@ -10,6 +10,9 @@ import {
   Terminal,
   Volume2,
   RefreshCw,
+  HardDrive,
+  Trash2,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,11 +95,78 @@ export default function SettingsView({ project }: SettingsViewProps) {
     [project.id],
   );
 
+  const [retentionStats, setRetentionStats] = useState<{
+    plan: string;
+    retentionDays: number;
+    thresholdDate: string;
+    oldestRecordDate: string | null;
+    totalRecords: number;
+    totalLogs: number;
+    totalMetrics: number;
+    totalSpans: number;
+    expiredRecords: number;
+    expiredLogs: number;
+    expiredMetrics: number;
+    expiredSpans: number;
+  } | null>(null);
+  const [isLoadingRetention, setIsLoadingRetention] = useState(true);
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeMessage, setPurgeMessage] = useState<string | null>(null);
+
+  const fetchRetentionStats = useCallback(async () => {
+    setIsLoadingRetention(true);
+    try {
+      const res = await fetch(
+        `/api/projects/retention?projectId=${project.id}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setRetentionStats(data.retention || null);
+      }
+    } catch (err) {
+      console.error("Failed to load retention stats:", err);
+    } finally {
+      setIsLoadingRetention(false);
+    }
+  }, [project.id]);
+
+  const handleManualPurge = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to permanently purge records older than your plan retention window?",
+      )
+    ) {
+      return;
+    }
+    setIsPurging(true);
+    setPurgeMessage(null);
+    try {
+      const res = await fetch("/api/projects/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPurgeMessage(
+          `Purged ${data.purged.totalDeleted} expired records (${data.purged.deletedLogsCount} logs, ${data.purged.deletedSpansCount} spans, ${data.purged.deletedMetricsCount} metrics).`,
+        );
+        fetchRetentionStats();
+      }
+    } catch (err) {
+      console.error(err);
+      setPurgeMessage("Failed to execute retention purge.");
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   useEffect(() => {
     Promise.resolve().then(() => {
       fetchAuditLogs(false);
+      fetchRetentionStats();
     });
-  }, [fetchAuditLogs]);
+  }, [fetchAuditLogs, fetchRetentionStats]);
 
   const [slackWebhookUrl, setSlackWebhookUrl] = useState(
     project.slackWebhookUrl,
@@ -369,6 +439,113 @@ export default function SettingsView({ project }: SettingsViewProps) {
           </Button>
         </div>
       </form>
+
+      {/* Data Retention & Storage Lifecycle Section */}
+      <Card className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent pointer-events-none" />
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-slate-800/60">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-indigo-400" />
+            <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-400">
+              Data Retention & Storage Lifecycle
+            </CardTitle>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => fetchRetentionStats()}
+            className="text-slate-500 hover:text-slate-300"
+            title="Refresh retention stats"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${isLoadingRetention ? "animate-spin" : ""}`}
+            />
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-5 space-y-4">
+          {isLoadingRetention ? (
+            <div className="text-center py-6 flex items-center justify-center gap-2 text-slate-500 text-xs">
+              <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+              Calculating project storage retention...
+            </div>
+          ) : retentionStats ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Plan Retention Window
+                  </div>
+                  <div className="text-base font-bold text-white mt-1 flex items-center gap-1.5 font-mono">
+                    <Clock className="w-4 h-4 text-indigo-400" />
+                    {retentionStats.retentionDays} Days
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 capitalize">
+                    {retentionStats.plan} Tier Limit
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Active Storage Count
+                  </div>
+                  <div className="text-base font-bold text-white mt-1 font-mono">
+                    {retentionStats.totalRecords.toLocaleString()} items
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    {retentionStats.totalLogs.toLocaleString()} logs ·{" "}
+                    {retentionStats.totalSpans.toLocaleString()} spans ·{" "}
+                    {retentionStats.totalMetrics.toLocaleString()} metrics
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+                  <div className="text-xs text-slate-500 font-medium">
+                    Expired & Cleanable
+                  </div>
+                  <div className="text-base font-bold text-amber-400 mt-1 font-mono">
+                    {retentionStats.expiredRecords.toLocaleString()} items
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Older than{" "}
+                    {new Date(
+                      retentionStats.thresholdDate,
+                    ).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+
+              {purgeMessage && (
+                <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-xs text-indigo-300 font-medium">
+                  {purgeMessage}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                <p className="text-xs text-slate-500">
+                  Scheduled daily cron automatically purges data older than your
+                  plan retention threshold.
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleManualPurge}
+                  disabled={isPurging || retentionStats.expiredRecords === 0}
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-800 hover:bg-rose-500/10 hover:text-rose-400 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  {isPurging ? "Purging data..." : "Purge Expired Data Now"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Retention statistics unavailable.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* System & Project Audit Logs Section */}
       <Card className="relative overflow-hidden">
