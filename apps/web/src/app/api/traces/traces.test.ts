@@ -125,7 +125,7 @@ describe("Traces API Endpoints", () => {
     const savedSpans = await Span.find({ traceId: "trace_abc_123" });
     expect(savedSpans.length).toBe(2);
     // PII should be redacted
-    expect(savedSpans[0]?.attributes.password).toBe("[REDACTED]");
+    expect(savedSpans[0]?.attributes?.password).toBe("[REDACTED]");
   });
 
   it("should list traces for a project and calculate metrics", async () => {
