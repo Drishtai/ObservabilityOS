@@ -5,14 +5,28 @@ import {
   MetricsCollectorConfig,
   QueuedMetric,
 } from "./metrics";
+import {
+  Tracer,
+  Span,
+  SpanOptions,
+  SpanEvent,
+  QueuedSpan,
+  TracerConfig,
+} from "./tracer";
 
 export {
   scrubText,
   scrubObject,
   MetricsCollector,
+  Tracer,
+  Span,
   type MetricOptions,
   type MetricsCollectorConfig,
   type QueuedMetric,
+  type SpanOptions,
+  type SpanEvent,
+  type QueuedSpan,
+  type TracerConfig,
 };
 
 export interface LogOptions {
@@ -27,12 +41,14 @@ export interface LoggerConfig {
   apiKey: string;
   endpoint?: string;
   metricsEndpoint?: string;
+  tracesEndpoint?: string;
   defaultService: string;
   defaultEnvironment?: "prod" | "staging" | "dev";
   batchSize?: number;
   flushIntervalMs?: number;
   enableMetrics?: boolean;
   metricsAutoSampleIntervalMs?: number;
+  enableTracing?: boolean;
 }
 
 interface QueuedLog {
@@ -54,6 +70,7 @@ export class Logger {
   private queue: QueuedLog[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private metricsCollector: MetricsCollector | null = null;
+  private tracer: Tracer | null = null;
 
   private activeFlushPromise: Promise<void> | null = null;
 
@@ -63,6 +80,17 @@ export class Logger {
     this.defaultService = config.defaultService;
     this.defaultEnvironment = config.defaultEnvironment || "dev";
     this.batchSize = config.batchSize ?? 20;
+
+    if (config.enableTracing) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint:
+          config.tracesEndpoint ||
+          this.endpoint.replace(/\/api\/ingest\/?$/, "/api/traces/ingest"),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
 
     if (config.enableMetrics) {
       this.metricsCollector = new MetricsCollector({
@@ -202,7 +230,54 @@ export class Logger {
   }
 
   /**
-   * Flush all currently queued logs (and metrics) to the Ingestion APIs.
+   * Get the underlying Tracer instance (if initialized).
+   */
+  public getTracer(): Tracer | null {
+    return this.tracer;
+  }
+
+  /**
+   * Start a new distributed trace span.
+   */
+  public startSpan(name: string, options?: SpanOptions): Span {
+    if (!this.tracer) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/traces/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    return this.tracer.startSpan(name, options);
+  }
+
+  /**
+   * Execute an operation wrapped inside a distributed trace span automatically.
+   */
+  public async withSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T> | T,
+    options?: SpanOptions,
+  ): Promise<T> {
+    if (!this.tracer) {
+      this.tracer = new Tracer({
+        apiKey: this.apiKey,
+        endpoint: this.endpoint.replace(
+          /\/api\/ingest\/?$/,
+          "/api/traces/ingest",
+        ),
+        defaultService: this.defaultService,
+        defaultEnvironment: this.defaultEnvironment,
+      });
+    }
+    return this.tracer.withSpan(name, fn, options);
+  }
+
+  /**
+   * Flush all currently queued logs, metrics, and trace spans to the Ingestion APIs.
    */
   public async flush(): Promise<void> {
     if (this.metricsCollector) {
@@ -211,6 +286,12 @@ export class Logger {
           "[ObservabilityOS SDK] Failed to flush metrics collector:",
           err,
         );
+      });
+    }
+
+    if (this.tracer) {
+      await this.tracer.flush().catch((err) => {
+        console.error("[ObservabilityOS SDK] Failed to flush tracer:", err);
       });
     }
 
@@ -280,6 +361,10 @@ export class Logger {
     if (this.metricsCollector) {
       this.metricsCollector.destroy();
       this.metricsCollector = null;
+    }
+    if (this.tracer) {
+      this.tracer.destroy();
+      this.tracer = null;
     }
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
