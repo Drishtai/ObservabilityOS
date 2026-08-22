@@ -38,6 +38,9 @@ export default async function TracesPage({ searchParams }: PageProps) {
       $match: {
         projectId: activeProject._id,
         startTime: { $gte: start24h },
+        name: {
+          $not: /^(?:(?:GET|HEAD|OPTIONS)\s+)?(?:\/)?(?:ping|health|healthz|live|ready|readiness|liveness|metrics|prometheus|favicon\.ico)(?:\?.*|\/.*)?$/i,
+        },
       },
     },
     {

@@ -191,4 +191,73 @@ describe("Traces API Endpoints", () => {
     expect(data.trace.spans.length).toBe(1);
     expect(data.trace.spans[0].startPercent).toBe(0);
   });
+
+  it("should filter out /ping and health noise spans by default on trace list endpoint", async () => {
+    const sId = new mongoose.Types.ObjectId();
+    const now = new Date();
+
+    // 1. Real trace
+    await Span.create({
+      projectId: project._id,
+      serviceId: sId,
+      traceId: "trace_real_order",
+      spanId: "span_real",
+      name: "POST /api/checkout",
+      startTime: now,
+      endTime: new Date(now.getTime() + 100),
+      durationMs: 100,
+      status: "ok",
+      environment: "prod",
+    });
+
+    // 2. Ping noise trace
+    await Span.create({
+      projectId: project._id,
+      serviceId: sId,
+      traceId: "trace_ping_noise",
+      spanId: "span_ping",
+      name: "GET /ping",
+      startTime: now,
+      endTime: new Date(now.getTime() + 2),
+      durationMs: 2,
+      status: "ok",
+      environment: "prod",
+    });
+
+    // 3. Healthz noise trace
+    await Span.create({
+      projectId: project._id,
+      serviceId: sId,
+      traceId: "trace_healthz_noise",
+      spanId: "span_healthz",
+      name: "/healthz",
+      startTime: now,
+      endTime: new Date(now.getTime() + 3),
+      durationMs: 3,
+      status: "ok",
+      environment: "prod",
+    });
+
+    // Test default behavior (hideNoise = true)
+    const listReqDefault = new Request(
+      `http://localhost:3000/api/traces?projectId=${project._id.toString()}`,
+    );
+    const resDefault = await listGET(listReqDefault);
+    expect(resDefault.status).toBe(200);
+    const dataDefault = await resDefault.json();
+
+    expect(dataDefault.traces.length).toBe(1);
+    expect(dataDefault.traces[0].traceId).toBe("trace_real_order");
+    expect(dataDefault.traces[0].rootSpanName).toBe("POST /api/checkout");
+
+    // Test explicit hideNoise = false
+    const listReqAll = new Request(
+      `http://localhost:3000/api/traces?projectId=${project._id.toString()}&hideNoise=false`,
+    );
+    const resAll = await listGET(listReqAll);
+    expect(resAll.status).toBe(200);
+    const dataAll = await resAll.json();
+
+    expect(dataAll.traces.length).toBe(3);
+  });
 });

@@ -134,4 +134,41 @@ describe("ObservabilityOS Tracer & Spans", () => {
 
     logger.destroy();
   });
+
+  it("should drop noise spans such as /ping, /health, and /metrics by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tracer = new Tracer({
+      apiKey: "test-noise-key",
+      defaultService: "health-service",
+      batchSize: 1,
+      flushIntervalMs: 0,
+    });
+
+    const pingSpan = tracer.startSpan("GET /ping");
+    pingSpan.end();
+
+    const healthSpan = tracer.startSpan("/healthz");
+    healthSpan.end();
+
+    const metricsSpan = tracer.startSpan("GET /metrics");
+    metricsSpan.end();
+
+    const realSpan = tracer.startSpan("POST /api/orders");
+    realSpan.end();
+
+    await vi.runAllTimersAsync();
+    await tracer["activeFlushPromise"];
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const options = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    // Only the real span should be sent
+    expect(body.length).toBe(1);
+    expect(body[0].name).toBe("POST /api/orders");
+
+    tracer.destroy();
+  });
 });

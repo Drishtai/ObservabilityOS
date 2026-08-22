@@ -31,6 +31,12 @@ export interface QueuedSpan {
   events?: SpanEvent[];
 }
 
+export const DEFAULT_NOISE_PATTERNS = [
+  /^(?:GET|HEAD|OPTIONS)\s+\/(?:ping|health|healthz|live|ready|readiness|liveness|metrics|prometheus|favicon\.ico)(?:\?.*)?$/i,
+  /^\/(?:ping|health|healthz|live|ready|readiness|liveness|metrics|prometheus|favicon\.ico)(?:\?.*)?$/i,
+  /^(?:GET|HEAD)\s+\/_next\//i,
+];
+
 export interface TracerConfig {
   apiKey: string;
   endpoint?: string;
@@ -38,6 +44,8 @@ export interface TracerConfig {
   defaultEnvironment?: "prod" | "staging" | "dev";
   batchSize?: number;
   flushIntervalMs?: number;
+  ignoreNoise?: boolean;
+  ignorePatterns?: (string | RegExp)[];
 }
 
 export function generateTraceId(): string {
@@ -189,6 +197,8 @@ export class Tracer {
   private defaultService: string;
   private defaultEnvironment: "prod" | "staging" | "dev";
   private batchSize: number;
+  private ignoreNoise: boolean;
+  private ignorePatterns: (string | RegExp)[];
   private queue: QueuedSpan[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private activeFlushPromise: Promise<void> | null = null;
@@ -200,6 +210,8 @@ export class Tracer {
     this.defaultService = config.defaultService;
     this.defaultEnvironment = config.defaultEnvironment || "dev";
     this.batchSize = config.batchSize ?? 20;
+    this.ignoreNoise = config.ignoreNoise ?? true;
+    this.ignorePatterns = config.ignorePatterns ?? DEFAULT_NOISE_PATTERNS;
 
     const flushIntervalMs = config.flushIntervalMs ?? 2000;
     if (flushIntervalMs > 0) {
@@ -223,6 +235,18 @@ export class Tracer {
     }
   }
 
+  private isNoise(name: string): boolean {
+    if (!this.ignoreNoise) return false;
+    for (const pattern of this.ignorePatterns) {
+      if (typeof pattern === "string") {
+        if (name === pattern || name.includes(pattern)) return true;
+      } else if (pattern instanceof RegExp) {
+        if (pattern.test(name)) return true;
+      }
+    }
+    return false;
+  }
+
   public startSpan(name: string, options?: SpanOptions): Span {
     return new Span(
       name,
@@ -230,6 +254,11 @@ export class Tracer {
       this.defaultService,
       this.defaultEnvironment,
       (endedSpan) => {
+        if (this.isNoise(endedSpan.name)) {
+          // Drop noise spans (e.g. /ping, /health)
+          return;
+        }
+
         this.queue.push(endedSpan.toQueuedSpan());
         if (this.queue.length >= this.batchSize) {
           this.flush().catch((err) => {

@@ -105,6 +105,7 @@ export class Logger {
           resolveSubEndpoint(this.endpoint, "/api/traces/ingest"),
         defaultService: this.defaultService,
         defaultEnvironment: this.defaultEnvironment,
+        flushIntervalMs: config.flushIntervalMs,
       });
     }
 

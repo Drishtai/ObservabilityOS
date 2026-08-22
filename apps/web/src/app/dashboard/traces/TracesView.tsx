@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Network,
@@ -12,6 +12,7 @@ import {
   Layers,
   ArrowRight,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 
 interface SerializedService {
@@ -49,29 +50,46 @@ export default function TracesView({
   const [selectedService, setSelectedService] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [timeRange, setTimeRange] = useState<string>("24h");
+  const [hideNoise, setHideNoise] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const handleFilter = async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({
-        projectId,
-        serviceId: selectedService,
-        status: selectedStatus,
-        timeRange,
-      });
+  const fetchTraces = useCallback(
+    async (overrideHideNoise?: boolean) => {
+      setIsLoading(true);
+      try {
+        const noiseSetting =
+          overrideHideNoise !== undefined ? overrideHideNoise : hideNoise;
+        const params = new URLSearchParams({
+          projectId,
+          serviceId: selectedService,
+          status: selectedStatus,
+          timeRange,
+          hideNoise: noiseSetting ? "true" : "false",
+        });
 
-      const res = await fetch(`/api/traces?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTraces(data.traces || []);
+        const res = await fetch(`/api/traces?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTraces(data.traces || []);
+        }
+      } catch (err) {
+        console.error("Failed to load traces:", err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to load traces:", err);
-    } finally {
-      setIsLoading(false);
-    }
+    },
+    [projectId, selectedService, selectedStatus, timeRange, hideNoise],
+  );
+
+  const handleFilter = () => {
+    fetchTraces();
+  };
+
+  const toggleHideNoise = () => {
+    const next = !hideNoise;
+    setHideNoise(next);
+    fetchTraces(next);
   };
 
   const filteredTraces = traces.filter((t) => {
@@ -104,14 +122,29 @@ export default function TracesView({
             </div>
           </div>
         </div>
-        <button
-          onClick={handleFilter}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleHideNoise}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition cursor-pointer ${
+              hideNoise
+                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-xs"
+                : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+            }`}
+            title="Automatically filter out /ping, /health, /healthz, /metrics, and probe noise"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {hideNoise ? "Noise Filter: Active" : "Noise Filter: Off"}
+          </button>
+          <button
+            onClick={handleFilter}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -132,8 +165,10 @@ export default function TracesView({
         <div>
           <select
             value={selectedService}
-            onChange={(e) => setSelectedService(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              setSelectedService(e.target.value);
+            }}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
             <option value="all">All Services</option>
             {services.map((s) => (
@@ -148,8 +183,10 @@ export default function TracesView({
         <div>
           <select
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+            }}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
             <option value="all">All Statuses</option>
             <option value="ok">Success (OK)</option>
@@ -161,8 +198,10 @@ export default function TracesView({
         <div>
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              setTimeRange(e.target.value);
+            }}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
             <option value="1h">Last 1 Hour</option>
             <option value="24h">Last 24 Hours</option>

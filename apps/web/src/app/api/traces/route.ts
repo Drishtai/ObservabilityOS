@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") || "all";
     const environment = searchParams.get("environment") || "all";
     const timeRange = searchParams.get("timeRange") || "24h";
+    const hideNoise = searchParams.get("hideNoise") !== "false";
     const limit = Math.min(
       100,
       Math.max(1, parseInt(searchParams.get("limit") || "50", 10)),
@@ -61,6 +62,12 @@ export async function GET(request: Request) {
       projectId: new Types.ObjectId(projectId),
       startTime: { $gte: new Date(startTime) },
     };
+
+    if (hideNoise) {
+      matchConditions.name = {
+        $not: /^(?:(?:GET|HEAD|OPTIONS)\s+)?(?:\/)?(?:ping|health|healthz|live|ready|readiness|liveness|metrics|prometheus|favicon\.ico)(?:\?.*|\/.*)?$/i,
+      };
+    }
 
     if (serviceId !== "all") {
       matchConditions.serviceId = new Types.ObjectId(serviceId);
