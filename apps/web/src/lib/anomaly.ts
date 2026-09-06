@@ -52,6 +52,16 @@ async function initQueue() {
       }
       queue = new Queue("anomaly-detection-queue", {
         connection: connection as unknown as IRedisClient,
+        defaultJobOptions: {
+          removeOnComplete: {
+            age: 3600, // keep completed jobs for at most 1 hour
+            count: 100, // keep at most 100 completed jobs
+          },
+          removeOnFail: {
+            age: 24 * 3600, // keep failed jobs for 24 hours
+            count: 500, // keep at most 500 failed jobs
+          },
+        },
       });
 
       new Worker(
@@ -91,7 +101,20 @@ export async function triggerAnomalyCheck(
   await initQueue();
   if (queue) {
     try {
-      await queue.add("check-anomaly", { projectId, serviceId, environment });
+      await queue.add(
+        "check-anomaly",
+        { projectId, serviceId, environment },
+        {
+          removeOnComplete: {
+            age: 3600,
+            count: 100,
+          },
+          removeOnFail: {
+            age: 24 * 3600,
+            count: 500,
+          },
+        },
+      );
       console.log(
         `[Anomaly Queue] Enqueued anomaly check job for service ${serviceId}`,
       );
