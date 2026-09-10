@@ -1,9 +1,19 @@
 name: CI / CD -> Deploy to EC2
 
+# CI / CD -> Deploy to EC2 disabled by configuration
+# To re-enable, uncomment trigger events below:
+# on:
+#   push:
+#     branches: ["feature/drishti-customizations"]
+#   workflow_dispatch:
 on:
-  push:
-    branches: ["feature/drishti-customizations"]
   workflow_dispatch:
+    inputs:
+      disabled:
+        description: 'Deployment disabled'
+        required: false
+        default: 'true'
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -61,7 +71,7 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/feature/drishti-customizations'
+    if: false # Deployment disabled to EC2
     timeout-minutes: 10
 
     steps:
